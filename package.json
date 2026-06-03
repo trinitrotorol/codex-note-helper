@@ -1,18 +1,18 @@
 {
-  "name": "research-note-helper",
-  "displayName": "Research Note Helper",
+  "name": "codex-note-helper",
+  "displayName": "Codex Note Helper",
   "description": "Fill or append Markdown heading sections through a configurable Codex CLI command.",
   "version": "0.2.2",
   "publisher": "trinitrotorol",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/trinitrotorol/research-note-helper.git"
+    "url": "https://github.com/trinitrotorol/codex-note-helper.git"
   },
   "bugs": {
-    "url": "https://github.com/trinitrotorol/research-note-helper/issues"
+    "url": "https://github.com/trinitrotorol/codex-note-helper/issues"
   },
-  "homepage": "https://github.com/trinitrotorol/research-note-helper#readme",
+  "homepage": "https://github.com/trinitrotorol/codex-note-helper#readme",
   "keywords": [
     "codex",
     "markdown",
@@ -26,7 +26,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": false,
-      "description": "Research Note Helper starts an external Codex CLI process and can edit workspace files, so it is disabled in untrusted workspaces."
+      "description": "Codex Note Helper starts an external Codex CLI process and can edit workspace files, so it is disabled in untrusted workspaces."
     }
   },
   "scripts": {
@@ -42,83 +42,83 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:researchNoteHelper.fillWithCodex",
-    "onCommand:researchNoteHelper.listEmptyHeadings",
-    "onCommand:researchNoteHelper.deleteFailureLog",
-    "onCommand:researchNoteHelper.setMode",
-    "onCommand:researchNoteHelper.setFillPolicy",
-    "onCommand:researchNoteHelper.runSelfTest"
+    "onCommand:codexNoteHelper.fillWithCodex",
+    "onCommand:codexNoteHelper.listEmptyHeadings",
+    "onCommand:codexNoteHelper.deleteFailureLog",
+    "onCommand:codexNoteHelper.setMode",
+    "onCommand:codexNoteHelper.setFillPolicy",
+    "onCommand:codexNoteHelper.runSelfTest"
   ],
   "main": "./extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "researchNoteHelper.fillWithCodex",
+        "command": "codexNoteHelper.fillWithCodex",
         "title": "Fill/Append Headings with Codex",
-        "category": "Research Notes"
+        "category": "Codex Notes"
       },
       {
-        "command": "researchNoteHelper.listEmptyHeadings",
+        "command": "codexNoteHelper.listEmptyHeadings",
         "title": "List Empty Headings",
-        "category": "Research Notes"
+        "category": "Codex Notes"
       },
       {
-        "command": "researchNoteHelper.deleteFailureLog",
+        "command": "codexNoteHelper.deleteFailureLog",
         "title": "Delete Failure Log",
-        "category": "Research Notes"
+        "category": "Codex Notes"
       },
       {
-        "command": "researchNoteHelper.setMode",
+        "command": "codexNoteHelper.setMode",
         "title": "Set Mode",
-        "category": "Research Notes"
+        "category": "Codex Notes"
       },
       {
-        "command": "researchNoteHelper.setFillPolicy",
+        "command": "codexNoteHelper.setFillPolicy",
         "title": "Set Fill Policy",
-        "category": "Research Notes"
+        "category": "Codex Notes"
       },
       {
-        "command": "researchNoteHelper.runSelfTest",
+        "command": "codexNoteHelper.runSelfTest",
         "title": "Run Self Test",
-        "category": "Research Notes"
+        "category": "Codex Notes"
       }
     ],
     "menus": {
       "commandPalette": [
         {
-          "command": "researchNoteHelper.fillWithCodex",
+          "command": "codexNoteHelper.fillWithCodex",
           "when": "editorLangId == markdown"
         },
         {
-          "command": "researchNoteHelper.listEmptyHeadings",
+          "command": "codexNoteHelper.listEmptyHeadings",
           "when": "editorLangId == markdown"
         },
         {
-          "command": "researchNoteHelper.deleteFailureLog"
+          "command": "codexNoteHelper.deleteFailureLog"
         },
         {
-          "command": "researchNoteHelper.setMode"
+          "command": "codexNoteHelper.setMode"
         },
         {
-          "command": "researchNoteHelper.setFillPolicy"
+          "command": "codexNoteHelper.setFillPolicy"
         },
         {
-          "command": "researchNoteHelper.runSelfTest"
+          "command": "codexNoteHelper.runSelfTest"
         }
       ]
     },
     "keybindings": [
       {
-        "command": "researchNoteHelper.fillWithCodex",
+        "command": "codexNoteHelper.fillWithCodex",
         "key": "ctrl+k ctrl+q",
         "mac": "cmd+k cmd+q",
         "when": "editorTextFocus && editorLangId == markdown"
       }
     ],
     "configuration": {
-      "title": "Research Note Helper",
+      "title": "Codex Note Helper",
       "properties": {
-        "researchNoteHelper.mode": {
+        "codexNoteHelper.mode": {
           "type": "string",
           "default": "research",
           "enum": [
@@ -128,7 +128,7 @@
           ],
           "description": "Prompt mode used for generated note text."
         },
-        "researchNoteHelper.fillPolicy": {
+        "codexNoteHelper.fillPolicy": {
           "type": "string",
           "default": "emptyOnly",
           "enum": [
@@ -138,54 +138,54 @@
           ],
           "description": "Which heading sections should be updated."
         },
-        "researchNoteHelper.researchField": {
+        "codexNoteHelper.researchField": {
           "type": "string",
           "default": "",
           "description": "Optional research field to include in the generated Codex prompt."
         },
-        "researchNoteHelper.outputLanguage": {
+        "codexNoteHelper.outputLanguage": {
           "type": "string",
           "default": "Japanese",
           "description": "Language to use for generated note text."
         },
-        "researchNoteHelper.noteStyle": {
+        "codexNoteHelper.noteStyle": {
           "type": "string",
           "default": "",
           "description": "Optional style instruction. When empty, the selected mode supplies a default style."
         },
-        "researchNoteHelper.headingLevel": {
+        "codexNoteHelper.headingLevel": {
           "type": "number",
           "default": 1,
           "minimum": 1,
           "maximum": 6,
           "description": "Markdown heading level to treat as note titles."
         },
-        "researchNoteHelper.codexCommand": {
+        "codexNoteHelper.codexCommand": {
           "type": "string",
           "default": "codex",
           "description": "Codex CLI executable to run. Use only an executable name or full executable path, not command-line arguments."
         },
-        "researchNoteHelper.allowBundledCodexFromOpenAIExtension": {
+        "codexNoteHelper.allowBundledCodexFromOpenAIExtension": {
           "type": "boolean",
           "default": false,
           "description": "Allow fallback to a bundled codex.exe from the OpenAI ChatGPT/Codex extension when codexCommand is left as codex."
         },
-        "researchNoteHelper.enableWebSearch": {
+        "codexNoteHelper.enableWebSearch": {
           "type": "boolean",
           "default": false,
           "description": "Pass --search to Codex so it can look up paper references. Disabled by default to avoid extra network use."
         },
-        "researchNoteHelper.showCodexProgress": {
+        "codexNoteHelper.showCodexProgress": {
           "type": "boolean",
           "default": true,
           "description": "Use Codex JSON events to show approximate progress and the current safe activity in VS Code notifications."
         },
-        "researchNoteHelper.logFileName": {
+        "codexNoteHelper.logFileName": {
           "type": "string",
-          "default": "research-note-helper.log",
+          "default": "codex-note-helper.log",
           "description": "Workspace-relative log file used when the Codex command fails."
         },
-        "researchNoteHelper.logLevel": {
+        "codexNoteHelper.logLevel": {
           "type": "string",
           "default": "minimal",
           "enum": [

@@ -61,17 +61,17 @@ test("formatFailureLog records useful failure context", () => {
     filePath: "C:/research/note.md",
     command: "codex",
     args: ["exec", "-"],
-    emptySections: [{ title: "量子誤り訂正", lineNumber: 20 }],
+    emptySections: [{ title: "驥丞ｭ占ｪ､繧願ｨよｭ｣", lineNumber: 20 }],
     error,
     stderr: "stderr text",
     stdout: "stdout text",
     prompt: "prompt text"
   });
 
-  assert.match(log, /Research Note Helper failure/);
+  assert.match(log, /Codex Note Helper failure/);
   assert.match(log, /file: C:\/research\/note\.md/);
   assert.match(log, /command: codex/);
-  assert.match(log, /- 量子誤り訂正 \(line 20\)/);
+  assert.match(log, /- 驥丞ｭ占ｪ､繧願ｨよｭ｣ \(line 20\)/);
   assert.match(log, /Error: boom/);
   assert.match(log, /stderr text/);
   assert.match(log, /stdout text/);
@@ -95,7 +95,7 @@ test("formatFailureLog keeps minimal logs privacy-preserving", () => {
     prompt: "private prompt"
   });
 
-  assert.match(log, /Research Note Helper failure/);
+  assert.match(log, /Codex Note Helper failure/);
   assert.match(log, /workspace: workspace/);
   assert.match(log, /file: note\.md/);
   assert.match(log, /target heading count: 1/);

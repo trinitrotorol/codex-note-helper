@@ -16,20 +16,20 @@ test("package manifest contributes the fill command and keybinding", () => {
     (item) => item.command
   );
 
-  assert.equal(manifest.name, "research-note-helper");
-  assert.equal(manifest.displayName, "Research Note Helper");
+  assert.equal(manifest.name, "codex-note-helper");
+  assert.equal(manifest.displayName, "Codex Note Helper");
   assert.equal(manifest.publisher, "trinitrotorol");
   assert.equal(manifest.license, "MIT");
   assert.deepEqual(manifest.repository, {
     type: "git",
-    url: "https://github.com/trinitrotorol/research-note-helper.git"
+    url: "https://github.com/trinitrotorol/codex-note-helper.git"
   });
   assert.deepEqual(manifest.bugs, {
-    url: "https://github.com/trinitrotorol/research-note-helper/issues"
+    url: "https://github.com/trinitrotorol/codex-note-helper/issues"
   });
   assert.equal(
     manifest.homepage,
-    "https://github.com/trinitrotorol/research-note-helper#readme"
+    "https://github.com/trinitrotorol/codex-note-helper#readme"
   );
   assert.deepEqual(manifest.keywords, [
     "codex",
@@ -38,23 +38,23 @@ test("package manifest contributes the fill command and keybinding", () => {
     "research",
     "vscode-extension"
   ]);
-  assert.equal(commands.includes("researchNoteHelper.fillWithCodex"), true);
-  assert.equal(commands.includes("researchNoteHelper.deleteFailureLog"), true);
-  assert.equal(commands.includes("researchNoteHelper.setMode"), true);
-  assert.equal(commands.includes("researchNoteHelper.setFillPolicy"), true);
-  assert.equal(commands.includes("researchNoteHelper.openCodexRequest"), false);
-  assert.equal(paletteCommands.includes("researchNoteHelper.runSelfTest"), true);
+  assert.equal(commands.includes("codexNoteHelper.fillWithCodex"), true);
+  assert.equal(commands.includes("codexNoteHelper.deleteFailureLog"), true);
+  assert.equal(commands.includes("codexNoteHelper.setMode"), true);
+  assert.equal(commands.includes("codexNoteHelper.setFillPolicy"), true);
+  assert.equal(commands.includes("codexNoteHelper.openCodexRequest"), false);
+  assert.equal(paletteCommands.includes("codexNoteHelper.runSelfTest"), true);
   assert.equal(
-    paletteCommands.includes("researchNoteHelper.deleteFailureLog"),
+    paletteCommands.includes("codexNoteHelper.deleteFailureLog"),
     true
   );
-  assert.equal(paletteCommands.includes("researchNoteHelper.setMode"), true);
+  assert.equal(paletteCommands.includes("codexNoteHelper.setMode"), true);
   assert.equal(
-    paletteCommands.includes("researchNoteHelper.setFillPolicy"),
+    paletteCommands.includes("codexNoteHelper.setFillPolicy"),
     true
   );
   assert.deepEqual(keybindings[0], {
-    command: "researchNoteHelper.fillWithCodex",
+    command: "codexNoteHelper.fillWithCodex",
     key: "ctrl+k ctrl+q",
     mac: "cmd+k cmd+q",
     when: "editorTextFocus && editorLangId == markdown"
@@ -88,29 +88,29 @@ test("package manifest exposes logging configuration", () => {
   const properties = manifest.contributes.configuration.properties;
 
   assert.equal(
-    properties["researchNoteHelper.logFileName"].default,
-    "research-note-helper.log"
+    properties["codexNoteHelper.logFileName"].default,
+    "codex-note-helper.log"
   );
-  assert.equal(properties["researchNoteHelper.mode"].default, "research");
-  assert.deepEqual(properties["researchNoteHelper.mode"].enum, [
+  assert.equal(properties["codexNoteHelper.mode"].default, "research");
+  assert.deepEqual(properties["codexNoteHelper.mode"].enum, [
     "research",
     "general",
     "jobHunting"
   ]);
   assert.equal(
-    properties["researchNoteHelper.fillPolicy"].default,
+    properties["codexNoteHelper.fillPolicy"].default,
     "emptyOnly"
   );
-  assert.deepEqual(properties["researchNoteHelper.fillPolicy"].enum, [
+  assert.deepEqual(properties["codexNoteHelper.fillPolicy"].enum, [
     "emptyOnly",
     "emptyOrBulletsOnly",
     "appendAlways"
   ]);
-  assert.equal(properties["researchNoteHelper.enableWebSearch"].default, false);
-  assert.equal(properties["researchNoteHelper.showCodexProgress"].default, true);
-  assert.equal(properties["researchNoteHelper.logLevel"].default, "minimal");
+  assert.equal(properties["codexNoteHelper.enableWebSearch"].default, false);
+  assert.equal(properties["codexNoteHelper.showCodexProgress"].default, true);
+  assert.equal(properties["codexNoteHelper.logLevel"].default, "minimal");
   assert.equal(
-    properties["researchNoteHelper.allowBundledCodexFromOpenAIExtension"].default,
+    properties["codexNoteHelper.allowBundledCodexFromOpenAIExtension"].default,
     false
   );
 });

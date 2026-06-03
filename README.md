@@ -1,13 +1,13 @@
-# Research Note Helper
+# Codex Note Helper
 
-VS Code extension that fills empty Markdown headings in research notes by
+VS Code extension that fills empty Markdown headings in Markdown notes by
 calling a configurable Codex CLI executable.
 
 ## Requirements
 
 - VS Code 1.85.0 or newer.
 - Codex CLI available as `codex`, or a full executable path set in
-  `researchNoteHelper.codexCommand`.
+  `codexNoteHelper.codexCommand`.
 - Node.js 20 or newer for tests and packaging. Node.js 22 is pinned in
   `.node-version` for local development.
 
@@ -16,7 +16,7 @@ external Codex CLI process and can edit workspace files.
 
 ## Commands
 
-- `Research Notes: Fill/Append Headings with Codex`
+- `Codex Notes: Fill/Append Headings with Codex`
   - Finds target Markdown headings in the active note.
   - Saves the note, then runs `codex exec`.
   - Codex rereads the file and fills or appends only headings that still match
@@ -26,19 +26,19 @@ external Codex CLI process and can edit workspace files.
   - Refreshes open Markdown preview tabs after the note is updated.
   - Default shortcut: `Ctrl+K Ctrl+Q`.
 
-- `Research Notes: List Empty Headings`
+- `Codex Notes: List Empty Headings`
   - Shows empty headings and jumps to the selected one.
 
-- `Research Notes: Delete Failure Log`
+- `Codex Notes: Delete Failure Log`
   - Deletes the configured failure log after a confirmation dialog.
 
-- `Research Notes: Set Mode`
+- `Codex Notes: Set Mode`
   - Switches the prompt mode: `research`, `general`, or `jobHunting`.
 
-- `Research Notes: Set Fill Policy`
+- `Codex Notes: Set Fill Policy`
   - Switches which headings are updated.
 
-- `Research Notes: Run Self Test`
+- `Codex Notes: Run Self Test`
   - Runs lightweight manifest, prompt, logging, and command checks inside VS Code.
 
 ## Intended Flow
@@ -49,44 +49,44 @@ external Codex CLI process and can edit workspace files.
 
 For job-hunting notes:
 
-1. Run `Research Notes: Set Mode` and choose `jobHunting`.
-2. Run `Research Notes: Set Fill Policy` and choose `emptyOrBulletsOnly`.
+1. Run `Codex Notes: Set Mode` and choose `jobHunting`.
+2. Run `Codex Notes: Set Fill Policy` and choose `emptyOrBulletsOnly`.
 3. Use headings as company names and rough `-` bullets as source notes.
 4. Press `Ctrl+K Ctrl+Q` to append short company/job-hunting notes without
    deleting the existing bullets.
 
 ## Settings
 
-- `researchNoteHelper.mode`
+- `codexNoteHelper.mode`
   - Prompt mode. Options: `research`, `general`, `jobHunting`.
-- `researchNoteHelper.fillPolicy`
+- `codexNoteHelper.fillPolicy`
   - `emptyOnly`: update only empty headings.
   - `emptyOrBulletsOnly`: update empty headings and headings that contain only
     bullet lines.
   - `appendAlways`: append to every heading section.
-- `researchNoteHelper.researchField`
+- `codexNoteHelper.researchField`
   - Optional field context, such as `quantum computing`.
-- `researchNoteHelper.outputLanguage`
+- `codexNoteHelper.outputLanguage`
   - Output language for generated note text. Default: `Japanese`.
-- `researchNoteHelper.noteStyle`
+- `codexNoteHelper.noteStyle`
   - Optional prompt style instruction. When empty, the selected mode supplies a
     default style.
-- `researchNoteHelper.headingLevel`
+- `codexNoteHelper.headingLevel`
   - Markdown heading level to fill. Default: `1`.
-- `researchNoteHelper.codexCommand`
+- `codexNoteHelper.codexCommand`
   - Executable name or full executable path for Codex. Do not include arguments.
-- `researchNoteHelper.allowBundledCodexFromOpenAIExtension`
+- `codexNoteHelper.allowBundledCodexFromOpenAIExtension`
   - Allows fallback to a bundled `codex.exe` from the OpenAI ChatGPT/Codex
     extension. Disabled by default.
-- `researchNoteHelper.enableWebSearch`
+- `codexNoteHelper.enableWebSearch`
   - Adds `--search` to the Codex command. Disabled by default.
-- `researchNoteHelper.showCodexProgress`
+- `codexNoteHelper.showCodexProgress`
   - Shows approximate progress from `codex exec --json` events. Enabled by
     default. The percentage is a best-effort stage estimate, not a Codex API
     guarantee.
-- `researchNoteHelper.logFileName`
-  - Workspace-relative failure log path. Default: `research-note-helper.log`.
-- `researchNoteHelper.logLevel`
+- `codexNoteHelper.logFileName`
+  - Workspace-relative failure log path. Default: `codex-note-helper.log`.
+- `codexNoteHelper.logLevel`
   - `minimal` avoids prompt/stdout/stderr. `debug` includes them for debugging.
 
 ## Privacy
@@ -97,7 +97,7 @@ configured Codex CLI process and sends a prompt containing the target file path
 and empty headings.
 
 Codex may read the target Markdown file and may send data to its configured
-provider according to your Codex setup. Enabling `researchNoteHelper.enableWebSearch`
+provider according to your Codex setup. Enabling `codexNoteHelper.enableWebSearch`
 also allows Codex to perform web search. See `SECURITY.md` before
 using this on confidential notes.
 
@@ -109,7 +109,7 @@ the Codex sandbox allows within the workspace.
 
 Failure logs are written only when the Codex command fails. The default
 `minimal` log level avoids recording the prompt, stdout, stderr, and heading
-titles. Use `Research Notes: Delete Failure Log` to remove the log from the
+titles. Use `Codex Notes: Delete Failure Log` to remove the log from the
 workspace.
 
 ## Local Development
@@ -140,7 +140,7 @@ excluded from VSIX packages.
 
 Inside VS Code, run:
 
-- `Research Notes: Run Self Test`
+- `Codex Notes: Run Self Test`
 
 Run unit tests from this directory:
 

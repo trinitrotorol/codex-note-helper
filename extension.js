@@ -40,7 +40,7 @@ function getStoredSetting(name, fallback) {
 }
 
 function getConfig() {
-  const config = vscode.workspace.getConfiguration("researchNoteHelper");
+  const config = vscode.workspace.getConfiguration("codexNoteHelper");
   return {
     mode: getStoredSetting("mode", config.get("mode", "research")),
     fillPolicy: getStoredSetting(
@@ -61,7 +61,7 @@ function getConfig() {
     ),
     enableWebSearch: config.get("enableWebSearch", false),
     showCodexProgress: config.get("showCodexProgress", true),
-    logFileName: config.get("logFileName", "research-note-helper.log"),
+    logFileName: config.get("logFileName", "codex-note-helper.log"),
     logLevel: config.get("logLevel", "minimal")
   };
 }
@@ -83,7 +83,7 @@ function getStateStore() {
 }
 
 async function updateUserSetting(name, value) {
-  const config = vscode.workspace.getConfiguration("researchNoteHelper");
+  const config = vscode.workspace.getConfiguration("codexNoteHelper");
 
   try {
     await config.update(name, value, getConfigurationTarget());
@@ -184,7 +184,7 @@ function assertPathInside(parentDir, targetPath) {
 }
 
 function getLogFilePathFromWorkspace(workspaceDir, options) {
-  const name = options.logFileName || "research-note-helper.log";
+  const name = options.logFileName || "codex-note-helper.log";
   if (path.isAbsolute(name)) {
     throw new Error("Log file name must be workspace-relative.");
   }
@@ -271,7 +271,7 @@ async function refreshMarkdownPreviews() {
     await vscode.commands.executeCommand(MARKDOWN_PREVIEW_REFRESH_COMMAND);
     return true;
   } catch (error) {
-    console.warn(`Research Note Helper could not refresh Markdown previews: ${error.message}`);
+    console.warn(`Codex Note Helper could not refresh Markdown previews: ${error.message}`);
     return false;
   }
 }
@@ -442,7 +442,7 @@ async function fillWithCodex() {
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: `Updating ${targetSections.length} research note heading(s) with Codex`,
+        title: `Updating ${targetSections.length} note heading(s) with Codex`,
         cancellable: true
       },
       async (progress, token) => {
@@ -507,7 +507,7 @@ async function fillWithCodex() {
 
   await vscode.commands.executeCommand("workbench.files.action.refreshFilesExplorer");
   vscode.window.showInformationMessage(
-    `Updated ${targetSections.length} research note heading(s).`
+    `Updated ${targetSections.length} note heading(s).`
   );
 }
 
@@ -555,7 +555,7 @@ async function listEmptyHeadings() {
 }
 
 async function setModeCommand() {
-  const config = vscode.workspace.getConfiguration("researchNoteHelper");
+  const config = vscode.workspace.getConfiguration("codexNoteHelper");
   const current = config.get("mode", "research");
   const picked = await vscode.window.showQuickPick(
     [
@@ -585,11 +585,11 @@ async function setModeCommand() {
   }
 
   await updateUserSetting("mode", picked.label);
-  vscode.window.showInformationMessage(`Research Note Helper mode: ${picked.label}`);
+  vscode.window.showInformationMessage(`Codex Note Helper mode: ${picked.label}`);
 }
 
 async function setFillPolicyCommand() {
-  const config = vscode.workspace.getConfiguration("researchNoteHelper");
+  const config = vscode.workspace.getConfiguration("codexNoteHelper");
   const current = config.get("fillPolicy", "emptyOnly");
   const picked = await vscode.window.showQuickPick(
     [
@@ -620,7 +620,7 @@ async function setFillPolicyCommand() {
 
   await updateUserSetting("fillPolicy", picked.label);
   vscode.window.showInformationMessage(
-    `Research Note Helper fill policy: ${picked.label}`
+    `Codex Note Helper fill policy: ${picked.label}`
   );
 }
 
@@ -677,12 +677,12 @@ async function runSelfTestCommand() {
   const result = runSelfTests();
   if (!testOutputChannel) {
     testOutputChannel = vscode.window.createOutputChannel(
-      "Research Note Helper Tests"
+      "Codex Note Helper Tests"
     );
   }
 
   testOutputChannel.clear();
-  testOutputChannel.appendLine("Research Note Helper self test");
+  testOutputChannel.appendLine("Codex Note Helper self test");
   testOutputChannel.appendLine(`passed: ${result.passed}`);
   testOutputChannel.appendLine(`failed: ${result.failed}`);
   testOutputChannel.appendLine("");
@@ -699,13 +699,13 @@ async function runSelfTestCommand() {
 
   if (result.failed > 0) {
     vscode.window.showErrorMessage(
-      `Research Note Helper self test failed: ${result.failed} failure(s).`
+      `Codex Note Helper self test failed: ${result.failed} failure(s).`
     );
     return;
   }
 
   vscode.window.showInformationMessage(
-    `Research Note Helper self test passed: ${result.passed} checks.`
+    `Codex Note Helper self test passed: ${result.passed} checks.`
   );
 }
 
@@ -713,27 +713,27 @@ function activate(context) {
   extensionContext = context;
   context.subscriptions.push(
     vscode.commands.registerCommand(
-      "researchNoteHelper.fillWithCodex",
+      "codexNoteHelper.fillWithCodex",
       fillWithCodex
     ),
     vscode.commands.registerCommand(
-      "researchNoteHelper.listEmptyHeadings",
+      "codexNoteHelper.listEmptyHeadings",
       listEmptyHeadings
     ),
     vscode.commands.registerCommand(
-      "researchNoteHelper.deleteFailureLog",
+      "codexNoteHelper.deleteFailureLog",
       deleteFailureLogCommand
     ),
     vscode.commands.registerCommand(
-      "researchNoteHelper.setMode",
+      "codexNoteHelper.setMode",
       setModeCommand
     ),
     vscode.commands.registerCommand(
-      "researchNoteHelper.setFillPolicy",
+      "codexNoteHelper.setFillPolicy",
       setFillPolicyCommand
     ),
     vscode.commands.registerCommand(
-      "researchNoteHelper.runSelfTest",
+      "codexNoteHelper.runSelfTest",
       runSelfTestCommand
     )
   );

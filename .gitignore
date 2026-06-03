@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.tools/
+.npm-cache/
+.vsix-build*/
+.vscode-test/
+coverage/
+*.vsix
+*.zip
+*.log
+debug.log

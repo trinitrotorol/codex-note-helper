@@ -157,9 +157,8 @@ Build a VSIX:
 npm run package
 ```
 
-`npm run package` uses the pinned local `@vscode/vsce` devDependency and allows
-a missing repository URL for local VSIX builds. After the GitHub repository URL
-is added to `package.json`, use the stricter release check:
+`npm run package` uses the pinned local `@vscode/vsce` devDependency. Before a
+release, use the stricter package check:
 
 ```powershell
 npm run package:strict
@@ -168,10 +167,10 @@ npm run package:strict
 ## Release Checklist
 
 1. Confirm `publisher` in `package.json` matches the real VS Code Marketplace
-   publisher ID.
-2. Add the final GitHub `repository`, `bugs`, and `homepage` URLs to
-   `package.json` after the public repository exists.
+   publisher ID, currently `trinitrotorol`.
+2. Confirm `repository`, `bugs`, and `homepage` still point to the public GitHub
+   repository if the repository is renamed or moved.
 3. Run `npm install`, commit `package-lock.json`, then run `npm test`.
-4. Run `npm run package:strict` once repository metadata is present.
+4. Run `npm run package:strict`.
 5. Install the generated VSIX locally and test the main commands on a disposable
    Markdown workspace.

@@ -18,7 +18,19 @@ test("package manifest contributes the fill command and keybinding", () => {
 
   assert.equal(manifest.name, "research-note-helper");
   assert.equal(manifest.displayName, "Research Note Helper");
+  assert.equal(manifest.publisher, "trinitrotorol");
   assert.equal(manifest.license, "MIT");
+  assert.deepEqual(manifest.repository, {
+    type: "git",
+    url: "https://github.com/trinitrotorol/research-note-helper.git"
+  });
+  assert.deepEqual(manifest.bugs, {
+    url: "https://github.com/trinitrotorol/research-note-helper/issues"
+  });
+  assert.equal(
+    manifest.homepage,
+    "https://github.com/trinitrotorol/research-note-helper#readme"
+  );
   assert.deepEqual(manifest.keywords, [
     "codex",
     "markdown",

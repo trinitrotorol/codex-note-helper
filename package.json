@@ -3,8 +3,16 @@
   "displayName": "Research Note Helper",
   "description": "Fill or append Markdown heading sections through a configurable Codex CLI command.",
   "version": "0.2.2",
-  "publisher": "research-note-helper",
+  "publisher": "trinitrotorol",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/trinitrotorol/research-note-helper.git"
+  },
+  "bugs": {
+    "url": "https://github.com/trinitrotorol/research-note-helper/issues"
+  },
+  "homepage": "https://github.com/trinitrotorol/research-note-helper#readme",
   "keywords": [
     "codex",
     "markdown",

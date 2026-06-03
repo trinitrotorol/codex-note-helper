@@ -38,6 +38,7 @@ test("package manifest contributes the fill command and keybinding", () => {
     "research",
     "vscode-extension"
   ]);
+  assert.equal(manifest.activationEvents, undefined);
   assert.equal(commands.includes("codexNoteHelper.fillWithCodex"), true);
   assert.equal(commands.includes("codexNoteHelper.deleteFailureLog"), true);
   assert.equal(commands.includes("codexNoteHelper.setMode"), true);

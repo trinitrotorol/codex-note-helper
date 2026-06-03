@@ -41,14 +41,6 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "onCommand:codexNoteHelper.fillWithCodex",
-    "onCommand:codexNoteHelper.listEmptyHeadings",
-    "onCommand:codexNoteHelper.deleteFailureLog",
-    "onCommand:codexNoteHelper.setMode",
-    "onCommand:codexNoteHelper.setFillPolicy",
-    "onCommand:codexNoteHelper.runSelfTest"
-  ],
   "main": "./extension.js",
   "contributes": {
     "commands": [

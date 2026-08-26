@@ -1,0 +1,9 @@
+# These rules take effect when the default-branch ruleset requires Code Owner
+# review. Keep release authority and dependency changes under the repository
+# owner's explicit review.
+/.github/workflows/ @trinitrotorol
+/.github/dependabot.yml @trinitrotorol
+/.github/RELEASE_AUTH.md @trinitrotorol
+/package.json @trinitrotorol
+/package-lock.json @trinitrotorol
+/scripts/compare-vsix-payload.js @trinitrotorol

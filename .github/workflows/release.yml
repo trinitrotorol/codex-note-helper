@@ -6,7 +6,7 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -75,6 +75,8 @@ jobs:
     needs: [verify-platforms, verify-extension-host]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -201,9 +203,10 @@ jobs:
           git fetch --no-tags origin main
           git merge-base --is-ancestor "$GITHUB_SHA" "origin/main"
 
-      - name: Verify or publish to Visual Studio Marketplace
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      # TODO(auth, by 2026-11-30): migrate to stable Marketplace direct OIDC
+      # and remove the VSCE_PAT path. See .github/RELEASE_AUTH.md.
+      - name: Inspect Visual Studio Marketplace state
+        id: marketplace-state
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -220,18 +223,61 @@ jobs:
               exit 1
             fi
             echo "Marketplace ${version} already contains the identical extension payload."
+            echo "mode=existing" >> "$GITHUB_OUTPUT"
           elif [[ "$status" == "404" ]]; then
-            if [[ -z "${VSCE_PAT:-}" ]]; then
-              echo "::error::VSCE_PAT must be configured before publishing a new Marketplace version."
-              exit 1
-            fi
-            ./node_modules/.bin/vsce publish \
-              --packagePath "$package" \
-              --pat "$VSCE_PAT"
+            echo "mode=publish" >> "$GITHUB_OUTPUT"
           else
             echo "::error::Marketplace lookup failed with HTTP ${status}."
             exit 1
           fi
+
+      - name: Publish to Visual Studio Marketplace
+        if: steps.marketplace-state.outputs.mode == 'publish'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        shell: bash
+        run: |
+          if [[ -z "${VSCE_PAT:-}" ]]; then
+            echo "::error::VSCE_PAT must be configured before publishing a new Marketplace version."
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          ./node_modules/.bin/vsce publish \
+            --packagePath "codex-note-helper-${version}.vsix"
+
+      - name: Verify Visual Studio Marketplace publication
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          package="codex-note-helper-${version}.vsix"
+          marketplace_url="https://marketplace.visualstudio.com/_apis/public/gallery/publishers/trinitrotorol/vsextensions/codex-note-helper/${version}/vspackage"
+          status=""
+          for attempt in {1..6}; do
+            status="$(curl --silent --show-error --location --compressed --retry 3 \
+              --output "${RUNNER_TEMP}/marketplace-verified.vsix" \
+              --write-out '%{http_code}' \
+              "$marketplace_url")"
+            if [[ "$status" == "200" ]]; then
+              break
+            fi
+            if [[ "$status" != "404" ]]; then
+              echo "::error::Marketplace verification failed with HTTP ${status}."
+              exit 1
+            fi
+            if [[ "$attempt" -lt 6 ]]; then
+              sleep 10
+            fi
+          done
+          if [[ "$status" != "200" ]]; then
+            echo "::error::Marketplace ${version} was not publicly available after publication."
+            exit 1
+          fi
+          if ! node scripts/compare-vsix-payload.js \
+            "$package" "${RUNNER_TEMP}/marketplace-verified.vsix"; then
+            echo "::error::Marketplace ${version} differs from the draft release asset."
+            exit 1
+          fi
+          echo "Marketplace ${version} is public with the verified extension payload."
 
       - name: Publish GitHub release
         shell: bash

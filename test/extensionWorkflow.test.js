@@ -8,6 +8,9 @@ const assert = require("node:assert/strict");
 
 const EXECUTABLE_KEY = "a".repeat(64);
 const DEFAULT_TEXT = ["# Empty", "", "# Untouched", "keep", ""].join("\n");
+const TEST_FILESYSTEM_ROOT = path.parse(process.cwd()).root;
+const TEST_EXTENSION_PATH = path.join(TEST_FILESYSTEM_ROOT, "extension");
+const TEST_STORAGE_PATH = path.join(TEST_FILESYSTEM_ROOT, "extension-storage");
 
 function translate(message, ...args) {
   return args.reduce(
@@ -341,7 +344,7 @@ function createWorkflowHarness(options = {}) {
     extensionUri: createUri({
       scheme: "file",
       path: "/extension",
-      fsPath: "C:\\extension"
+      fsPath: TEST_EXTENSION_PATH
     }),
     globalState: {
       get(key, fallback) {
@@ -354,7 +357,7 @@ function createWorkflowHarness(options = {}) {
     globalStorageUri: createUri({
       scheme: "file",
       path: "/extension-storage",
-      fsPath: "C:\\extension-storage"
+      fsPath: TEST_STORAGE_PATH
     }),
     subscriptions: []
   };

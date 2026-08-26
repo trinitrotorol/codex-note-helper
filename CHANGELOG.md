@@ -59,6 +59,8 @@
   and generation while excluding user consent/review time. Fingerprint all
   executable artifacts with SHA-256 and revalidate after consent and before
   generation to reject content replacement races.
+- Bound Windows process-tree teardown and its `taskkill` helper so cancellation
+  or timeout cannot remain blocked by a hung termination subprocess.
 - Restrict runtime Diagnostics to settings, extension storage, executable
   permission and CLI compatibility, isolation state, and diagnostic-log
   presence; diagnostics is single-flight and cancelled during extension

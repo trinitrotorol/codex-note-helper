@@ -327,7 +327,7 @@
   },
   "devDependencies": {
     "@vscode/test-electron": "3.1.0",
-    "@vscode/vsce": "3.9.1",
+    "@vscode/vsce": "3.9.2",
     "jszip": "3.10.1"
   }
 }

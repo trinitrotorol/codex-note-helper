@@ -52,6 +52,9 @@ does not require an Azure subscription, Azure CLI session, client secret, or
 stored PAT. Do not use an unreleased `@vscode/vsce` build or source from its
 default branch in the release workflow.
 
+Progress is tracked in [issue #3: Migrate Visual Studio Marketplace publishing
+from Global PAT to direct OIDC](https://github.com/trinitrotorol/codex-note-helper/issues/3).
+
 Migrate only after all of these readiness gates are met:
 
 - [ ] A pinned stable `@vscode/vsce` version exposes `publish --oidc` in its

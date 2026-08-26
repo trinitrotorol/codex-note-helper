@@ -1,8 +1,8 @@
 {
   "name": "codex-note-helper",
-  "displayName": "Codex Note Helper",
-  "description": "Fill or append Markdown heading sections through a configurable Codex CLI command.",
-  "version": "0.2.2",
+  "displayName": "%extension.displayName%",
+  "description": "%extension.description%",
+  "version": "0.3.0",
   "publisher": "trinitrotorol",
   "license": "MIT",
   "repository": {
@@ -13,6 +13,11 @@
     "url": "https://github.com/trinitrotorol/codex-note-helper/issues"
   },
   "homepage": "https://github.com/trinitrotorol/codex-note-helper#readme",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#0b1020",
+    "theme": "dark"
+  },
   "keywords": [
     "codex",
     "markdown",
@@ -21,69 +26,95 @@
     "vscode-extension"
   ],
   "extensionKind": [
-    "ui"
+    "workspace"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": false,
-      "description": "Codex Note Helper starts an external Codex CLI process and can edit workspace files, so it is disabled in untrusted workspaces."
+      "description": "%capabilities.untrustedWorkspaces.description%"
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "%capabilities.virtualWorkspaces.description%"
     }
   },
   "scripts": {
     "test": "node --test",
-    "package": "vsce package --allow-missing-repository",
-    "package:strict": "vsce package"
+    "test:vscode": "node test/vscode/run-vscode-tests.js",
+    "check:syntax": "node scripts/verify.js --syntax-only",
+    "verify": "node scripts/verify.js",
+    "smoke:codex": "node scripts/smoke-codex.js",
+    "vscode:prepublish": "npm run verify",
+    "prepublishOnly": "npm run verify",
+    "package": "vsce package --allow-missing-repository --no-dependencies",
+    "package:strict": "vsce package --no-dependencies"
   },
   "engines": {
     "vscode": "^1.85.0",
-    "node": ">=20"
+    "node": ">=22"
   },
+  "packageManager": "npm@10.9.8",
   "categories": [
     "Other"
   ],
   "main": "./extension.js",
+  "l10n": "./l10n",
+  "activationEvents": [
+    "onCommand:codexNoteHelper.listEmptyHeadings",
+    "onCommand:codexNoteHelper.runSelfTest"
+  ],
   "contributes": {
     "commands": [
       {
         "command": "codexNoteHelper.fillWithCodex",
-        "title": "Fill/Append Headings with Codex",
-        "category": "Codex Notes"
+        "title": "%commands.fillWithCodex.title%",
+        "category": "%commands.category%",
+        "enablement": "isWorkspaceTrusted && (resourceScheme == file || resourceScheme == vscode-remote) && (editorLangId == markdown || resourceExtname == .md)"
       },
       {
-        "command": "codexNoteHelper.listEmptyHeadings",
-        "title": "List Empty Headings",
-        "category": "Codex Notes"
+        "command": "codexNoteHelper.cancelRun",
+        "title": "%commands.cancelRun.title%",
+        "category": "%commands.category%"
+      },
+      {
+        "command": "codexNoteHelper.listTargetHeadings",
+        "title": "%commands.listTargetHeadings.title%",
+        "category": "%commands.category%",
+        "enablement": "isWorkspaceTrusted && (resourceScheme == file || resourceScheme == vscode-remote) && (editorLangId == markdown || resourceExtname == .md)"
       },
       {
         "command": "codexNoteHelper.deleteFailureLog",
-        "title": "Delete Failure Log",
-        "category": "Codex Notes"
+        "title": "%commands.deleteFailureLog.title%",
+        "category": "%commands.category%"
       },
       {
         "command": "codexNoteHelper.setMode",
-        "title": "Set Mode",
-        "category": "Codex Notes"
+        "title": "%commands.setMode.title%",
+        "category": "%commands.category%"
       },
       {
         "command": "codexNoteHelper.setFillPolicy",
-        "title": "Set Fill Policy",
-        "category": "Codex Notes"
+        "title": "%commands.setFillPolicy.title%",
+        "category": "%commands.category%"
       },
       {
-        "command": "codexNoteHelper.runSelfTest",
-        "title": "Run Self Test",
-        "category": "Codex Notes"
+        "command": "codexNoteHelper.runDiagnostics",
+        "title": "%commands.runDiagnostics.title%",
+        "category": "%commands.category%"
       }
     ],
     "menus": {
       "commandPalette": [
         {
           "command": "codexNoteHelper.fillWithCodex",
-          "when": "editorLangId == markdown"
+          "when": "isWorkspaceTrusted && (resourceScheme == file || resourceScheme == vscode-remote) && (editorLangId == markdown || resourceExtname == .md)"
         },
         {
-          "command": "codexNoteHelper.listEmptyHeadings",
-          "when": "editorLangId == markdown"
+          "command": "codexNoteHelper.cancelRun"
+        },
+        {
+          "command": "codexNoteHelper.listTargetHeadings",
+          "when": "isWorkspaceTrusted && (resourceScheme == file || resourceScheme == vscode-remote) && (editorLangId == markdown || resourceExtname == .md)"
         },
         {
           "command": "codexNoteHelper.deleteFailureLog"
@@ -95,20 +126,12 @@
           "command": "codexNoteHelper.setFillPolicy"
         },
         {
-          "command": "codexNoteHelper.runSelfTest"
+          "command": "codexNoteHelper.runDiagnostics"
         }
       ]
     },
-    "keybindings": [
-      {
-        "command": "codexNoteHelper.fillWithCodex",
-        "key": "ctrl+k ctrl+q",
-        "mac": "cmd+k cmd+q",
-        "when": "editorTextFocus && editorLangId == markdown"
-      }
-    ],
     "configuration": {
-      "title": "Codex Note Helper",
+      "title": "%configuration.title%",
       "properties": {
         "codexNoteHelper.mode": {
           "type": "string",
@@ -118,7 +141,19 @@
             "general",
             "jobHunting"
           ],
-          "description": "Prompt mode used for generated note text."
+          "enumItemLabels": [
+            "%configuration.mode.label.research%",
+            "%configuration.mode.label.general%",
+            "%configuration.mode.label.jobHunting%"
+          ],
+          "enumDescriptions": [
+            "%configuration.mode.enum.research%",
+            "%configuration.mode.enum.general%",
+            "%configuration.mode.enum.jobHunting%"
+          ],
+          "markdownDescription": "%configuration.mode.description%",
+          "scope": "resource",
+          "order": 10
         },
         "codexNoteHelper.fillPolicy": {
           "type": "string",
@@ -128,68 +163,171 @@
             "emptyOrBulletsOnly",
             "appendAlways"
           ],
-          "description": "Which heading sections should be updated."
+          "enumItemLabels": [
+            "%configuration.fillPolicy.label.emptyOnly%",
+            "%configuration.fillPolicy.label.emptyOrBulletsOnly%",
+            "%configuration.fillPolicy.label.appendAlways%"
+          ],
+          "enumDescriptions": [
+            "%configuration.fillPolicy.enum.emptyOnly%",
+            "%configuration.fillPolicy.enum.emptyOrBulletsOnly%",
+            "%configuration.fillPolicy.enum.appendAlways%"
+          ],
+          "markdownDescription": "%configuration.fillPolicy.description%",
+          "scope": "resource",
+          "order": 20
         },
         "codexNoteHelper.researchField": {
           "type": "string",
           "default": "",
-          "description": "Optional research field to include in the generated Codex prompt."
+          "markdownDescription": "%configuration.researchField.description%",
+          "scope": "resource",
+          "order": 30
         },
         "codexNoteHelper.outputLanguage": {
           "type": "string",
           "default": "Japanese",
-          "description": "Language to use for generated note text."
+          "markdownDescription": "%configuration.outputLanguage.description%",
+          "scope": "resource",
+          "order": 40
         },
         "codexNoteHelper.noteStyle": {
           "type": "string",
           "default": "",
-          "description": "Optional style instruction. When empty, the selected mode supplies a default style."
+          "markdownDescription": "%configuration.noteStyle.description%",
+          "scope": "resource",
+          "order": 50
         },
         "codexNoteHelper.headingLevel": {
-          "type": "number",
+          "type": "integer",
           "default": 1,
-          "minimum": 1,
-          "maximum": 6,
-          "description": "Markdown heading level to treat as note titles."
+          "enum": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "enumItemLabels": [
+            "H1 (#)",
+            "H2 (##)",
+            "H3 (###)",
+            "H4 (####)",
+            "H5 (#####)",
+            "H6 (######)"
+          ],
+          "enumDescriptions": [
+            "%configuration.headingLevel.enum.h1%",
+            "%configuration.headingLevel.enum.h2%",
+            "%configuration.headingLevel.enum.h3%",
+            "%configuration.headingLevel.enum.h4%",
+            "%configuration.headingLevel.enum.h5%",
+            "%configuration.headingLevel.enum.h6%"
+          ],
+          "markdownDescription": "%configuration.headingLevel.description%",
+          "scope": "resource",
+          "order": 60
         },
         "codexNoteHelper.codexCommand": {
           "type": "string",
           "default": "codex",
-          "description": "Codex CLI executable to run. Use only an executable name or full executable path, not command-line arguments."
+          "markdownDescription": "%configuration.codexCommand.description%",
+          "scope": "machine",
+          "order": 70
         },
         "codexNoteHelper.allowBundledCodexFromOpenAIExtension": {
           "type": "boolean",
           "default": false,
-          "description": "Allow fallback to a bundled codex.exe from the OpenAI ChatGPT/Codex extension when codexCommand is left as codex."
+          "markdownDescription": "%configuration.allowBundledCodexFromOpenAIExtension.description%",
+          "scope": "machine",
+          "order": 80
         },
         "codexNoteHelper.enableWebSearch": {
           "type": "boolean",
           "default": false,
-          "description": "Pass --search to Codex so it can look up paper references. Disabled by default to avoid extra network use."
+          "markdownDescription": "%configuration.enableWebSearch.description%",
+          "scope": "machine",
+          "order": 90
         },
         "codexNoteHelper.showCodexProgress": {
           "type": "boolean",
           "default": true,
-          "description": "Use Codex JSON events to show approximate progress and the current safe activity in VS Code notifications."
+          "markdownDescription": "%configuration.showCodexProgress.description%",
+          "scope": "resource",
+          "order": 100
         },
-        "codexNoteHelper.logFileName": {
-          "type": "string",
-          "default": "codex-note-helper.log",
-          "description": "Workspace-relative log file used when the Codex command fails."
+        "codexNoteHelper.timeoutSeconds": {
+          "type": "integer",
+          "default": 300,
+          "minimum": 30,
+          "maximum": 1800,
+          "markdownDescription": "%configuration.timeoutSeconds.description%",
+          "scope": "resource",
+          "order": 110
         },
-        "codexNoteHelper.logLevel": {
+        "codexNoteHelper.maxTargetHeadings": {
+          "type": "integer",
+          "default": 25,
+          "minimum": 1,
+          "maximum": 200,
+          "markdownDescription": "%configuration.maxTargetHeadings.description%",
+          "scope": "resource",
+          "order": 120
+        },
+        "codexNoteHelper.maxInputCharacters": {
+          "type": "integer",
+          "default": 500000,
+          "minimum": 1000,
+          "maximum": 5000000,
+          "markdownDescription": "%configuration.maxInputCharacters.description%",
+          "scope": "resource",
+          "order": 130
+        },
+        "codexNoteHelper.maxOutputBytes": {
+          "type": "integer",
+          "default": 1048576,
+          "minimum": 65536,
+          "maximum": 10485760,
+          "markdownDescription": "%configuration.maxOutputBytes.description%",
+          "scope": "resource",
+          "order": 140
+        },
+        "codexNoteHelper.confirmBeforeRun": {
           "type": "string",
-          "default": "minimal",
+          "default": "appendAlways",
           "enum": [
-            "minimal",
-            "debug"
+            "always",
+            "appendAlways",
+            "never"
           ],
-          "description": "Failure log detail. Minimal avoids prompt/stdout/stderr; debug includes them for troubleshooting."
+          "enumItemLabels": [
+            "%configuration.confirmBeforeRun.label.always%",
+            "%configuration.confirmBeforeRun.label.appendAlways%",
+            "%configuration.confirmBeforeRun.label.never%"
+          ],
+          "enumDescriptions": [
+            "%configuration.confirmBeforeRun.enum.always%",
+            "%configuration.confirmBeforeRun.enum.appendAlways%",
+            "%configuration.confirmBeforeRun.enum.never%"
+          ],
+          "markdownDescription": "%configuration.confirmBeforeRun.description%",
+          "scope": "resource",
+          "order": 150
+        },
+        "codexNoteHelper.ignoreCodexUserConfiguration": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "%configuration.ignoreCodexUserConfiguration.description%",
+          "scope": "machine",
+          "order": 160
         }
       }
     }
   },
   "devDependencies": {
-    "@vscode/vsce": "3.9.1"
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "3.9.1",
+    "jszip": "3.10.1"
   }
 }

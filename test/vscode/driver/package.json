@@ -1,0 +1,13 @@
+{
+  "name": "codex-note-helper-vscode-test-driver",
+  "displayName": "Codex Note Helper VS Code Test Driver",
+  "version": "0.0.0",
+  "publisher": "codex-note-helper-tests",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "*"
+  ]
+}

@@ -1,5 +1,8 @@
 param(
-  [int]$Major = 22,
+  [ValidatePattern("^\d+\.\d+\.\d+$")]
+  [string]$Version = "22.22.3",
+  [ValidatePattern("^[A-Fa-f0-9]{64}$")]
+  [string]$ExpectedSha256 = "6c8d54f635feff4df76c2ca80f45332eb2ff57d25226edce36592e51a177ee33",
   [string]$ToolsDir = ".tools"
 )
 
@@ -36,41 +39,26 @@ $nodeRoot = Assert-InRepo (Join-Path $toolsRoot "node")
 
 New-Item -ItemType Directory -Force -Path $cacheRoot | Out-Null
 
-$indexUrl = "https://nodejs.org/dist/index.json"
-$releases = Invoke-RestMethod -Uri $indexUrl
-$release = $releases |
-  Where-Object {
-    $_.version -match "^v$Major\." -and
-    $_.files -contains "win-x64-zip"
-  } |
-  Select-Object -First 1
-
-if (-not $release) {
-  throw "Could not find a Node.js v$Major Windows x64 release."
-}
-
-$version = $release.version
-$zipName = "node-$version-win-x64.zip"
-$distUrl = "https://nodejs.org/dist/$version"
+$releaseVersion = "v$Version"
+$zipName = "node-$releaseVersion-win-x64.zip"
+$distUrl = "https://nodejs.org/dist/$releaseVersion"
 $zipPath = Assert-InRepo (Join-Path $cacheRoot $zipName)
-$extractRoot = Assert-InRepo (Join-Path $cacheRoot "extract-$version")
+$partialZipPath = Assert-InRepo "$zipPath.partial"
+$extractRoot = Assert-InRepo (Join-Path $cacheRoot "extract-$releaseVersion")
 
-Write-Host "Downloading $zipName..."
-Invoke-WebRequest -Uri "$distUrl/$zipName" -OutFile $zipPath
+if (-not (Test-Path -LiteralPath $zipPath)) {
+  if (Test-Path -LiteralPath $partialZipPath) {
+    Remove-Item -LiteralPath $partialZipPath -Force
+  }
 
-Write-Host "Verifying SHA256..."
-$shasums = Invoke-RestMethod -Uri "$distUrl/SHASUMS256.txt"
-$expectedHash = ($shasums -split "`n" |
-  Where-Object { $_ -match "\s$([regex]::Escape($zipName))$" } |
-  Select-Object -First 1) -split "\s+" |
-  Select-Object -First 1
-
-if (-not $expectedHash) {
-  throw "Could not find SHA256 entry for $zipName."
+  Write-Host "Downloading pinned Node.js $releaseVersion..."
+  Invoke-WebRequest -Uri "$distUrl/$zipName" -OutFile $partialZipPath
+  Move-Item -LiteralPath $partialZipPath -Destination $zipPath
 }
 
+Write-Host "Verifying pinned SHA256..."
 $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLowerInvariant()
-if ($actualHash -ne $expectedHash.ToLowerInvariant()) {
+if ($actualHash -ne $ExpectedSha256.ToLowerInvariant()) {
   throw "SHA256 mismatch for $zipName."
 }
 
@@ -81,7 +69,7 @@ if (Test-Path -LiteralPath $extractRoot) {
 
 Expand-Archive -LiteralPath $zipPath -DestinationPath $extractRoot -Force
 
-$extractedNodeRoot = Assert-InRepo (Join-Path $extractRoot "node-$version-win-x64")
+$extractedNodeRoot = Assert-InRepo (Join-Path $extractRoot "node-$releaseVersion-win-x64")
 if (-not (Test-Path -LiteralPath $extractedNodeRoot)) {
   throw "Extracted Node.js folder was not found: $extractedNodeRoot"
 }
@@ -97,5 +85,15 @@ $nodeExe = Join-Path $nodeRoot "node.exe"
 $npmCmd = Join-Path $nodeRoot "npm.cmd"
 
 Write-Host "Installed Node.js to $nodeRoot"
-& $nodeExe --version
-& $npmCmd --version
+$installedVersion = (& $nodeExe --version | Select-Object -First 1).Trim()
+if ($installedVersion -ne $releaseVersion) {
+  throw "Installed Node.js version mismatch: expected $releaseVersion, got $installedVersion"
+}
+
+Write-Host $installedVersion
+$installedNpmVersion = (& $npmCmd --version | Select-Object -First 1).Trim()
+if ($Version -eq "22.22.3" -and $installedNpmVersion -ne "10.9.8") {
+  throw "Installed npm version mismatch: expected 10.9.8, got $installedNpmVersion"
+}
+
+Write-Host $installedNpmVersion

@@ -1,0 +1,243 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-platforms:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22.22.3"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Verify and package
+        run: |
+          npm run verify
+          npm run package:strict -- --out codex-note-helper-release-gate.vsix
+
+  verify-extension-host:
+    strategy:
+      fail-fast: false
+      matrix:
+        vscode-version: ["1.85.0", "stable"]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22.22.3"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build test VSIX
+        run: npm run package:strict -- --out codex-note-helper-release-gate.vsix
+
+      - name: Test the installed VSIX in VS Code
+        run: >-
+          xvfb-run -a npm run test:vscode --
+          --version "${{ matrix.vscode-version }}"
+          --vsix codex-note-helper-release-gate.vsix
+
+  release:
+    needs: [verify-platforms, verify-extension-host]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22.22.3"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Verify release
+        run: npm run verify
+
+      - name: Verify tag matches the manifest version
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          test "$GITHUB_REF_NAME" = "v${version}"
+
+      - name: Require the tagged commit to be on main
+        shell: bash
+        run: git merge-base --is-ancestor "$GITHUB_SHA" "origin/main"
+
+      - name: Build VSIX from the tagged commit
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          npm run package:strict -- --out "codex-note-helper-${version}.vsix"
+
+      - name: Create checksum
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sha256sum "codex-note-helper-${version}.vsix" > "codex-note-helper-${version}.vsix.sha256"
+
+      - name: Inspect immutable release state
+        id: release-state
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          api_url="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}"
+          status="$(curl --silent --show-error --location --retry 3 \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --output "${RUNNER_TEMP}/codex-note-helper-release.json" \
+            --write-out '%{http_code}' \
+            "$api_url")"
+          if [[ "$status" == "404" ]]; then
+            echo "mode=new" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$status" != "200" ]]; then
+            echo "::error::GitHub release lookup failed with HTTP ${status}."
+            exit 1
+          fi
+          if [[ "$(jq -r .draft "${RUNNER_TEMP}/codex-note-helper-release.json")" != "true" ]]; then
+            echo "::error::The public GitHub release already exists and is immutable."
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          existing_dir="${RUNNER_TEMP}/existing-release"
+          mkdir -p "$existing_dir"
+          if gh release download "$GITHUB_REF_NAME" \
+              --dir "$existing_dir" \
+              --pattern "codex-note-helper-${version}.vsix" \
+              --pattern "codex-note-helper-${version}.vsix.sha256" && \
+             (cd "$existing_dir" && sha256sum --check "codex-note-helper-${version}.vsix.sha256") && \
+             node scripts/compare-vsix-payload.js \
+               "codex-note-helper-${version}.vsix" \
+               "${existing_dir}/codex-note-helper-${version}.vsix"; then
+            echo "mode=resume-draft" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=repair-draft" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Test the installed VSIX in VS Code
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          xvfb-run -a npm run test:vscode -- \
+            --version stable \
+            --vsix "codex-note-helper-${version}.vsix"
+
+      - name: Prepare or repair draft GitHub release
+        if: steps.release-state.outputs.mode != 'resume-draft'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "${{ steps.release-state.outputs.mode }}" == "repair-draft" ]]; then
+            gh release upload "$GITHUB_REF_NAME" \
+              "codex-note-helper-${version}.vsix" \
+              "codex-note-helper-${version}.vsix.sha256" \
+              --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              "codex-note-helper-${version}.vsix" \
+              "codex-note-helper-${version}.vsix.sha256" \
+              --draft \
+              --verify-tag \
+              --generate-notes \
+              --title "Codex Note Helper ${GITHUB_REF_NAME}"
+          fi
+
+      - name: Revalidate the remote tag before publication
+        shell: bash
+        run: |
+          remote_tag="$(git ls-remote origin "refs/tags/${GITHUB_REF_NAME}^{}" | awk 'NR == 1 { print $1 }')"
+          if [[ -z "$remote_tag" ]]; then
+            remote_tag="$(git ls-remote origin "refs/tags/${GITHUB_REF_NAME}" | awk 'NR == 1 { print $1 }')"
+          fi
+          if [[ "$remote_tag" != "$GITHUB_SHA" ]]; then
+            echo "::error::The remote tag no longer resolves to the tested commit."
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" "origin/main"
+
+      - name: Verify or publish to Visual Studio Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          package="codex-note-helper-${version}.vsix"
+          marketplace_url="https://marketplace.visualstudio.com/_apis/public/gallery/publishers/trinitrotorol/vsextensions/codex-note-helper/${version}/vspackage"
+          status="$(curl --silent --show-error --location --compressed --retry 3 \
+            --output "${RUNNER_TEMP}/marketplace-existing.vsix" \
+            --write-out '%{http_code}' \
+            "$marketplace_url")"
+          if [[ "$status" == "200" ]]; then
+            if ! node scripts/compare-vsix-payload.js \
+              "$package" "${RUNNER_TEMP}/marketplace-existing.vsix"; then
+              echo "::error::Marketplace ${version} differs from the draft release asset."
+              exit 1
+            fi
+            echo "Marketplace ${version} already contains the identical extension payload."
+          elif [[ "$status" == "404" ]]; then
+            if [[ -z "${VSCE_PAT:-}" ]]; then
+              echo "::error::VSCE_PAT must be configured before publishing a new Marketplace version."
+              exit 1
+            fi
+            ./node_modules/.bin/vsce publish \
+              --packagePath "$package" \
+              --pat "$VSCE_PAT"
+          else
+            echo "::error::Marketplace lookup failed with HTTP ${status}."
+            exit 1
+          fi
+
+      - name: Publish GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)" == "true" ]]; then
+            gh release edit "$GITHUB_REF_NAME" --draft=false
+          fi

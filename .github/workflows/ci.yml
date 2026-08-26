@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pinned Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22.22.3"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Verify JavaScript syntax and tests
+        run: npm run verify
+
+      - name: Read manifest version
+        id: manifest
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Build strict VSIX
+        run: npm run package:strict -- --out "codex-note-helper-${{ steps.manifest.outputs.version }}.vsix"
+
+      - name: Upload VSIX
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codex-note-helper-${{ steps.manifest.outputs.version }}-${{ runner.os }}
+          path: codex-note-helper-${{ steps.manifest.outputs.version }}.vsix
+          if-no-files-found: error
+
+  packaged-extension-host:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        vscode-version: ["1.85.0", "stable"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pinned Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22.22.3"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build test VSIX
+        run: npm run package:strict -- --out codex-note-helper-integration.vsix
+
+      - name: Test the installed VSIX in VS Code
+        run: >-
+          xvfb-run -a npm run test:vscode --
+          --version "${{ matrix.vscode-version }}"
+          --vsix codex-note-helper-integration.vsix

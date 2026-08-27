@@ -8,11 +8,15 @@ const extensionId = "trinitrotorol.codex-note-helper";
 const publicCommands = [
   "codexNoteHelper.fillWithCodex",
   "codexNoteHelper.cancelRun",
+  "codexNoteHelper.reopenPendingReview",
+  "codexNoteHelper.applyPendingReview",
+  "codexNoteHelper.discardPendingReview",
   "codexNoteHelper.listTargetHeadings",
   "codexNoteHelper.deleteFailureLog",
   "codexNoteHelper.setMode",
   "codexNoteHelper.setFillPolicy",
-  "codexNoteHelper.runDiagnostics"
+  "codexNoteHelper.runDiagnostics",
+  "codexNoteHelper.chooseCliSource"
 ];
 
 async function run() {
@@ -28,6 +32,18 @@ async function run() {
 
   await extension.activate();
   assert.equal(extension.isActive, true);
+  assert.equal(extension.packageJSON.pricing, "Free");
+  assert.equal(extension.packageJSON.contributes.walkthroughs.length, 1);
+
+  const outputLanguage = vscode.workspace
+    .getConfiguration("codexNoteHelper")
+    .inspect("outputLanguage");
+  assert.ok(outputLanguage, "The packaged output-language setting is missing.");
+  assert.equal(
+    outputLanguage.defaultValue,
+    "English",
+    "The English extension host must resolve the localized default."
+  );
 
   const registeredCommands = await vscode.commands.getCommands(true);
   for (const command of publicCommands) {

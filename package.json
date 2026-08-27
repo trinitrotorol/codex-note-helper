@@ -2,7 +2,7 @@
   "name": "codex-note-helper",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "trinitrotorol",
   "license": "MIT",
   "repository": {
@@ -18,11 +18,27 @@
     "color": "#0b1020",
     "theme": "dark"
   },
+  "pricing": "Free",
   "keywords": [
+    "ai",
+    "ai-notes",
     "codex",
+    "codex-cli",
+    "diff-review",
+    "human-in-the-loop",
+    "job-search",
+    "japanese",
+    "knowledge-management",
     "markdown",
-    "notes",
-    "research",
+    "markdown-notes",
+    "note-generation",
+    "note-taking",
+    "openai",
+    "research-notes",
+    "study-notes",
+    "technical-writing",
+    "日本語",
+    "研究ノート",
     "vscode-extension"
   ],
   "extensionKind": [
@@ -55,6 +71,8 @@
   },
   "packageManager": "npm@10.9.8",
   "categories": [
+    "AI",
+    "Education",
     "Other"
   ],
   "main": "./extension.js",
@@ -75,6 +93,24 @@
         "command": "codexNoteHelper.cancelRun",
         "title": "%commands.cancelRun.title%",
         "category": "%commands.category%"
+      },
+      {
+        "command": "codexNoteHelper.reopenPendingReview",
+        "title": "%commands.reopenPendingReview.title%",
+        "category": "%commands.category%",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "codexNoteHelper.applyPendingReview",
+        "title": "%commands.applyPendingReview.title%",
+        "category": "%commands.category%",
+        "icon": "$(check)"
+      },
+      {
+        "command": "codexNoteHelper.discardPendingReview",
+        "title": "%commands.discardPendingReview.title%",
+        "category": "%commands.category%",
+        "icon": "$(trash)"
       },
       {
         "command": "codexNoteHelper.listTargetHeadings",
@@ -101,6 +137,11 @@
         "command": "codexNoteHelper.runDiagnostics",
         "title": "%commands.runDiagnostics.title%",
         "category": "%commands.category%"
+      },
+      {
+        "command": "codexNoteHelper.chooseCliSource",
+        "title": "%commands.chooseCliSource.title%",
+        "category": "%commands.category%"
       }
     ],
     "menus": {
@@ -111,6 +152,18 @@
         },
         {
           "command": "codexNoteHelper.cancelRun"
+        },
+        {
+          "command": "codexNoteHelper.reopenPendingReview",
+          "when": "codexNoteHelper.hasPendingReview"
+        },
+        {
+          "command": "codexNoteHelper.applyPendingReview",
+          "when": "codexNoteHelper.hasPendingReview"
+        },
+        {
+          "command": "codexNoteHelper.discardPendingReview",
+          "when": "codexNoteHelper.hasPendingReview"
         },
         {
           "command": "codexNoteHelper.listTargetHeadings",
@@ -127,9 +180,83 @@
         },
         {
           "command": "codexNoteHelper.runDiagnostics"
+        },
+        {
+          "command": "codexNoteHelper.chooseCliSource"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "codexNoteHelper.applyPendingReview",
+          "when": "codexNoteHelper.activeEditorHasPendingReview && resourceScheme == codex-note-helper-preview",
+          "group": "navigation@1"
+        },
+        {
+          "command": "codexNoteHelper.discardPendingReview",
+          "when": "codexNoteHelper.activeEditorHasPendingReview && resourceScheme == codex-note-helper-preview",
+          "group": "navigation@2"
+        },
+        {
+          "command": "codexNoteHelper.reopenPendingReview",
+          "when": "codexNoteHelper.activeEditorHasPendingReview && resourceScheme == codex-note-helper-preview",
+          "group": "navigation@3"
         }
       ]
     },
+    "walkthroughs": [
+      {
+        "id": "codexNoteHelper.gettingStarted",
+        "title": "%walkthrough.title%",
+        "description": "%walkthrough.description%",
+        "steps": [
+          {
+            "id": "codexNoteHelper.chooseCli",
+            "title": "%walkthrough.chooseCli.title%",
+            "description": "%walkthrough.chooseCli.description%",
+            "media": {
+              "markdown": "media/walkthrough-cli.md"
+            },
+            "completionEvents": [
+              "onContext:codexNoteHelper.cliSourceConfigured"
+            ]
+          },
+          {
+            "id": "codexNoteHelper.runDiagnostics",
+            "title": "%walkthrough.diagnostics.title%",
+            "description": "%walkthrough.diagnostics.description%",
+            "media": {
+              "markdown": "media/walkthrough-diagnostics.md"
+            },
+            "completionEvents": [
+              "onContext:codexNoteHelper.initialDiagnosticsPassed"
+            ]
+          },
+          {
+            "id": "codexNoteHelper.openMarkdown",
+            "title": "%walkthrough.markdown.title%",
+            "description": "%walkthrough.markdown.description%",
+            "media": {
+              "markdown": "media/walkthrough-markdown.md"
+            },
+            "completionEvents": [
+              "onContext:editorLangId == markdown"
+            ]
+          },
+          {
+            "id": "codexNoteHelper.generateAndReview",
+            "title": "%walkthrough.generate.title%",
+            "description": "%walkthrough.generate.description%",
+            "media": {
+              "image": "media/demo.gif",
+              "altText": "%walkthrough.generate.altText%"
+            },
+            "completionEvents": [
+              "onContext:codexNoteHelper.reviewReady"
+            ]
+          }
+        ]
+      }
+    ],
     "configuration": {
       "title": "%configuration.title%",
       "properties": {
@@ -186,7 +313,7 @@
         },
         "codexNoteHelper.outputLanguage": {
           "type": "string",
-          "default": "Japanese",
+          "default": "%configuration.outputLanguage.default%",
           "markdownDescription": "%configuration.outputLanguage.description%",
           "scope": "resource",
           "order": 40

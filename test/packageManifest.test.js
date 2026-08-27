@@ -45,7 +45,7 @@ test("package manifest contributes the v0.3 commands without a conflicting keybi
   );
 
   assert.equal(manifest.name, "codex-note-helper");
-  assert.equal(manifest.version, "0.3.0");
+  assert.equal(manifest.version, "0.3.1");
   assert.equal(manifest.displayName, "%extension.displayName%");
   assert.equal(manifest.l10n, "./l10n");
   assert.equal(manifest.icon, "media/icon.png");
@@ -54,6 +54,17 @@ test("package manifest contributes the v0.3 commands without a conflicting keybi
     theme: "dark"
   });
   assert.equal(manifest.publisher, "trinitrotorol");
+  assert.equal(manifest.pricing, "Free");
+  assert.deepEqual(manifest.categories, ["AI", "Education", "Other"]);
+  for (const keyword of [
+    "ai-notes",
+    "codex-cli",
+    "markdown-notes",
+    "note-taking",
+    "research-notes"
+  ]) {
+    assert.ok(manifest.keywords.includes(keyword), `missing keyword: ${keyword}`);
+  }
   assert.equal(manifest.license, "MIT");
   assert.deepEqual(manifest.repository, {
     type: "git",
@@ -75,11 +86,15 @@ test("package manifest contributes the v0.3 commands without a conflicting keybi
   assert.deepEqual(commands, [
     "codexNoteHelper.fillWithCodex",
     "codexNoteHelper.cancelRun",
+    "codexNoteHelper.reopenPendingReview",
+    "codexNoteHelper.applyPendingReview",
+    "codexNoteHelper.discardPendingReview",
     "codexNoteHelper.listTargetHeadings",
     "codexNoteHelper.deleteFailureLog",
     "codexNoteHelper.setMode",
     "codexNoteHelper.setFillPolicy",
-    "codexNoteHelper.runDiagnostics"
+    "codexNoteHelper.runDiagnostics",
+    "codexNoteHelper.chooseCliSource"
   ]);
   assert.equal(commands.includes("codexNoteHelper.listEmptyHeadings"), false);
   assert.equal(commands.includes("codexNoteHelper.runSelfTest"), false);
@@ -102,6 +117,35 @@ test("package manifest contributes the v0.3 commands without a conflicting keybi
     (item) => item.command === "codexNoteHelper.cancelRun"
   );
   assert.equal(cancelPaletteItem.when, undefined);
+
+  const reviewCommands = [
+    "codexNoteHelper.reopenPendingReview",
+    "codexNoteHelper.applyPendingReview",
+    "codexNoteHelper.discardPendingReview"
+  ];
+  for (const command of reviewCommands) {
+    const paletteItem = manifest.contributes.menus.commandPalette.find(
+      (item) => item.command === command
+    );
+    assert.equal(paletteItem.when, "codexNoteHelper.hasPendingReview");
+    const editorTitleItem = manifest.contributes.menus["editor/title"].find(
+      (item) => item.command === command
+    );
+    assert.match(
+      editorTitleItem.when,
+      /codexNoteHelper\.activeEditorHasPendingReview/u
+    );
+    assert.match(editorTitleItem.when, /codex-note-helper-preview/u);
+  }
+
+  const [walkthrough] = manifest.contributes.walkthroughs;
+  assert.equal(walkthrough.id, "codexNoteHelper.gettingStarted");
+  assert.equal(walkthrough.steps.length, 4);
+  for (const step of walkthrough.steps) {
+    const mediaPath = step.media.markdown || step.media.image;
+    assert.ok(fs.existsSync(path.join(repoRoot, mediaPath)), mediaPath);
+    assert.ok(step.completionEvents.length > 0);
+  }
 
   const icon = fs.readFileSync(path.join(repoRoot, manifest.icon));
   assert.equal(icon.subarray(1, 4).toString("ascii"), "PNG");
@@ -248,6 +292,10 @@ test("package manifest exposes bounded and reviewable generation settings", () =
     "appendAlways"
   ]);
   assert.equal(properties["codexNoteHelper.headingLevel"].type, "integer");
+  assert.equal(
+    properties["codexNoteHelper.outputLanguage"].default,
+    "%configuration.outputLanguage.default%"
+  );
   assert.deepEqual(
     properties["codexNoteHelper.headingLevel"].enum,
     [1, 2, 3, 4, 5, 6]

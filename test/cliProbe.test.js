@@ -59,8 +59,55 @@ test("probeCodexCli reports missing required flags", async () => {
   );
 });
 
-test("safeVersionText cannot inject multiline output", () => {
-  assert.equal(safeVersionText("codex\nsecret\tvalue"), "codex secret value");
+test("safeVersionText exposes only an allowlisted Codex name and semver", () => {
+  assert.equal(safeVersionText("codex-cli 1.2.3\n"), "codex-cli 1.2.3");
+  assert.equal(
+    safeVersionText("Codex v0.123.0-beta.1+windows.x64"),
+    "codex 0.123.0"
+  );
+});
+
+test("safeVersionText never returns paths, tokens, controls, or arbitrary output", () => {
+  const cases = [
+    "C:/private/note.md sk-private-token",
+    "codex\\r\\nC:/private/note.md",
+    "codex \u00001.2.3 private",
+    "codex-cli sk-private-token",
+    "old codex without a version"
+  ];
+  for (const value of cases) {
+    assert.equal(safeVersionText(value), "Codex CLI");
+  }
+
+  const mixed = safeVersionText(
+    "warning C:/private/note.md sk-private-token\ncodex-cli 1.2.3-sk-private-token\nmore private output"
+  );
+  assert.equal(mixed, "codex-cli 1.2.3");
+  assert.equal(mixed.includes("private"), false);
+  assert.equal(/[\r\n\t\u0000-\u001f\u007f]/u.test(mixed), false);
+});
+
+test("an unrecognized version stays compatible when the required flags exist", async () => {
+  const result = await probeCodexCli({
+    command: "codex",
+    cwd: "/safe/runtime",
+    runProcess: async (options) => {
+      if (options.args[0] === "--version") {
+        return {
+          stdout: "C:/private/note.md sk-private-token\n",
+          stderr: ""
+        };
+      }
+      return options.args.length === 1
+        ? { stdout: REQUIRED_GLOBAL_FLAGS.join(" "), stderr: "" }
+        : {
+            stdout: `${REQUIRED_EXEC_FLAGS.join(" ")} --ignore-user-config`,
+            stderr: ""
+          };
+    }
+  });
+
+  assert.deepEqual(result, { version: "Codex CLI", supported: true });
 });
 
 test("probeCodexCli prepends a resolved npm entry point and forwards cancellation", async () => {

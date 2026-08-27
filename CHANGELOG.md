@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.3.1
+
+- Keep generated proposals pending when the review notification is hidden or
+  cleared instead of treating notification dismissal as Discard. Add persistent
+  status-bar, editor-title, and Command Palette actions to reopen, apply, or
+  discard the same proposal without another Codex request.
+- Bind pending reviews to the original document object, URI, version, complete
+  text snapshot, and preview URIs. Invalidate and clean them on document change,
+  close/reopen, cancellation, explicit decision, or extension deactivation, and
+  recheck the snapshot immediately before apply.
+- Make missing-CLI failures actionable. When an eligible CLI bundle exists in
+  the official OpenAI extension, offer its dedicated setting without enabling
+  it automatically; otherwise offer the CLI-source chooser. Bundled selection
+  requires explicit modal opt-in and still passes fingerprint consent and CLI
+  compatibility checks.
+- Add a localized Getting Started walkthrough for CLI source, diagnostics,
+  saved Markdown, and the first reviewable proposal. Diagnostics completion is
+  recorded only after a successful executable and flag check and does not submit
+  a note-generation request.
+- Use an English output-language default in the English manifest catalog and a
+  Japanese default in the Japanese catalog while preserving explicit user and
+  workspace settings.
+- Record only allowlisted failure phase/reason codes and explicit process-start
+  state. Omit stdout/stderr truncation fields when no Codex process started and
+  continue to exclude raw messages, paths, prompts, note text, model output,
+  stdout, stderr, and stack traces.
+- Rewrite the Marketplace README around the user workflow, add English and
+  Japanese quick starts, a synthetic metadata-free demo, a direct install
+  command, free-versus-Codex-usage wording, and concise safety/troubleshooting
+  guidance. Move development and release details to `CONTRIBUTING.md`.
+- Expand accurate Marketplace search tags, add AI/Education categories and the
+  Free pricing label, and provide a synthetic GitHub social-preview asset.
+
 ## 0.3.0
 
 - Replace direct Codex file editing with a fixed structured-output contract,

@@ -2,7 +2,7 @@
   "name": "codex-note-helper",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "publisher": "trinitrotorol",
   "license": "MIT",
   "repository": {
@@ -60,6 +60,7 @@
     "check:syntax": "node scripts/verify.js --syntax-only",
     "verify": "node scripts/verify.js",
     "smoke:codex": "node scripts/smoke-codex.js",
+    "capture:marketplace-demo": "node scripts/capture-marketplace-demo.js",
     "vscode:prepublish": "npm run verify",
     "prepublishOnly": "npm run verify",
     "package": "vsce package --allow-missing-repository --no-dependencies",

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.3
+
+- Replace the illustrative Marketplace animation with a capture of the actual
+  VS Code editing, generation, diff-review, and Apply flow. The recording uses
+  only a fixed synthetic note and response and makes no Codex or provider
+  request.
+- Add a reproducible, isolated capture pipeline that audits visible text,
+  renderer-only frames, PNG/GIF structure, metadata, and the staged VSIX before
+  producing a release candidate. Capture profiles and raw audit artifacts stay
+  outside Git and the packaged extension.
+
 ## 0.3.2
 
 - Apply reviewed updates with a text-only VS Code workspace edit so editor

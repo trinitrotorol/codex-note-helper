@@ -97,7 +97,7 @@ test("extension entry point activates and registers every command", async () => 
     }
   };
   const context = {
-    extension: { packageJSON: { version: "0.3.2" } },
+    extension: { packageJSON: { version: "0.3.3" } },
     globalState: { get: () => 0, update: async () => undefined },
     globalStorageUri: createUri({
       scheme: "file",

@@ -6,11 +6,12 @@ configured for Codex, not as an offline or local-only model.
 
 ## Supported Versions
 
-Security fixes are provided for the latest released version only. Version 0.3.2
+Security fixes are provided for the latest released version only. Version 0.3.3
 uses the structured-proposal and validated-application design introduced in
 0.3.0, retains recoverable pending reviews and allowlisted preflight reason
 codes, and adds layout-preserving text-only Apply plus fail-closed save-state
-reporting without weakening the review or logging boundaries.
+reporting without weakening the review or logging boundaries. Its Marketplace
+demo update does not change the extension runtime.
 
 ## Trust and Workspace Requirements
 
@@ -224,7 +225,7 @@ Diagnostic logs are stored only in extension-owned global storage. They always
 contain bounded timestamps, process-start state, allowlisted phase/reason codes,
 counts, and truncation flags only when a process started. Prompts, model output,
 stdout, stderr, stack traces, paths, command arguments, headings, unknown error
-codes, and raw error messages are never written. Version 0.3.2 does not create
+codes, and raw error messages are never written. Version 0.3.3 does not create
 or append a log in the workspace; the removed workspace-log setting is ignored.
 
 - Log and notification strings are bounded.

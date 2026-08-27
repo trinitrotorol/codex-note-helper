@@ -25,7 +25,7 @@
   "walkthrough.markdown.description": "Open a trusted local or remote `.md` file and add a heading such as `# Hamiltonian simulation`.\n[Open a file](command:workbench.action.files.openFile)",
   "walkthrough.generate.title": "Generate, review, and decide",
   "walkthrough.generate.description": "Generate a proposal, inspect the structurally validated diff, then explicitly Apply or Discard it. A hidden notification does not discard a pending review.\n[Generate and review](command:codexNoteHelper.fillWithCodex)",
-  "walkthrough.generate.altText": "Animated synthetic demonstration: Markdown heading, generation, diff review, and explicit apply.",
+  "walkthrough.generate.altText": "Animated capture of Codex Note Helper running in an isolated VS Code window with synthetic note data: Markdown editing and preview, generation progress, diff review, explicit Apply, and the unsaved result.",
   "configuration.title": "Codex Note Helper",
   "configuration.mode.description": "Controls the generation profile used for target headings.",
   "configuration.mode.label.research": "Research notes",

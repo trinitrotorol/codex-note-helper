@@ -648,7 +648,7 @@ function createWorkflowHarness(options = {}) {
     ["approvedExecutableFingerprints", [EXECUTABLE_KEY]]
   ]);
   const context = {
-    extension: { packageJSON: { version: "0.3.2" } },
+    extension: { packageJSON: { version: "0.3.3" } },
     extensionUri: createUri({
       scheme: "file",
       path: "/extension",

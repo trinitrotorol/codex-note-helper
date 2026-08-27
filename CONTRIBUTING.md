@@ -77,8 +77,22 @@ review state, settings, workflows, or dependencies require tests proving that:
 
 Use synthetic paths and content in tests and screenshots. Review every frame of
 Marketplace media; do not capture account names, email addresses, local paths,
-tokens, notifications, real notes, or provider output. The committed media
-generator produces synthetic, metadata-free assets.
+tokens, unrelated notifications, real notes, or provider output.
+
+The animated demo is captured from an isolated VS Code instance with a fixed
+synthetic note and deterministic response. It exercises the installed
+extension's real diff and Apply path without contacting Codex or a provider:
+
+```powershell
+npm run capture:marketplace-demo -- --python <absolute-path-to-Pillow-Python>
+```
+
+The capture command writes only beneath `.tools/marketplace-capture`, audits
+visible text and image structure, and produces `demo-candidate.gif`. Review the
+candidate and its contact sheet before copying that exact audited file to
+`media/demo.gif`. Never commit the isolated profile, raw frames, logs, control
+files, or audit workspace. `scripts/generate-marketplace-media.py` generates
+only the static social preview and must not replace the captured demo.
 
 ## Release checklist
 
@@ -95,7 +109,9 @@ generator produces synthetic, metadata-free assets.
    persistent review recovery, explicit Apply/Discard, undo, and owned-log
    deletion.
 7. Confirm publisher, Marketplace copy, English/Japanese catalogs, pricing
-   wording, demo media, repository metadata, and security disclosures.
+   wording, demo media, repository metadata, and security disclosures. For a
+   new demo, require the approved candidate, committed `media/demo.gif`, strict
+   VSIX entry, and downloaded Marketplace VSIX entry to have the same SHA-256.
 8. Push the reviewed commit to `main`, create a new immutable `vX.Y.Z` tag, and
    let the pinned release workflow build and publish the tagged source.
 9. Verify the public Marketplace package matches the tested VSIX before making

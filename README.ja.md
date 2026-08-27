@@ -8,7 +8,11 @@ Markdown の対象見出しから Codex CLI で調査・一般・就活ノート
 構造を検証した VS Code の差分を確認し、Apply または Discard を選ぶまで生成内容は
 適用されません。
 
-![見出し、生成、差分確認、明示的な適用を示す合成デモ](media/demo.gif)
+![合成ノートデータを使った隔離済みVS Code実画面で、Markdownの編集とプレビュー、生成中の進捗、差分確認、明示的な適用、未保存の結果を示すCodex Note Helperのアニメーション。](media/demo.gif)
+
+_隔離したVS Codeプロファイルで、固定した合成ノートと更新案を使って収録しています。
+収録時にCodexは呼び出さず、アカウント情報、ホスト固有のパス、プロバイダー出力を
+含みません。_
 
 [VS Code Marketplaceからインストール](https://marketplace.visualstudio.com/items?itemName=trinitrotorol.codex-note-helper)
 

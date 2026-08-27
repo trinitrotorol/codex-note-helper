@@ -45,7 +45,7 @@ test("package manifest contributes the v0.3 commands without a conflicting keybi
   );
 
   assert.equal(manifest.name, "codex-note-helper");
-  assert.equal(manifest.version, "0.3.2");
+  assert.equal(manifest.version, "0.3.3");
   assert.equal(manifest.displayName, "%extension.displayName%");
   assert.equal(manifest.l10n, "./l10n");
   assert.equal(manifest.icon, "media/icon.png");

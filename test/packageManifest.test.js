@@ -45,7 +45,7 @@ test("package manifest contributes the v0.3 commands without a conflicting keybi
   );
 
   assert.equal(manifest.name, "codex-note-helper");
-  assert.equal(manifest.version, "0.3.3");
+  assert.equal(manifest.version, "0.3.4");
   assert.equal(manifest.displayName, "%extension.displayName%");
   assert.equal(manifest.l10n, "./l10n");
   assert.equal(manifest.icon, "media/icon.png");
@@ -149,8 +149,8 @@ test("package manifest contributes the v0.3 commands without a conflicting keybi
 
   const icon = fs.readFileSync(path.join(repoRoot, manifest.icon));
   assert.equal(icon.subarray(1, 4).toString("ascii"), "PNG");
-  assert.equal(icon.readUInt32BE(16), 128);
-  assert.equal(icon.readUInt32BE(20), 128);
+  assert.equal(icon.readUInt32BE(16), 256);
+  assert.equal(icon.readUInt32BE(20), 256);
 });
 
 test("package manifest runs syntax checks and tests before publication", () => {

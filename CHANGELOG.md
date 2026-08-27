@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.4
+
+- Replace the extension and Marketplace icon with a high-contrast, 256-pixel
+  design that keeps the note-and-sparkles identity recognizable on light and
+  dark surfaces down to 16 pixels.
+- Add structural checks for the published icon's dimensions, PNG chunks,
+  checksums, transparent margin, and hidden transparent-pixel content.
+
 ## 0.3.3
 
 - Replace the illustrative Marketplace animation with a capture of the actual

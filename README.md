@@ -136,6 +136,7 @@ Git/diff documents, virtual workspaces, and untrusted workspaces are rejected.
 | `codexNoteHelper.maxOutputBytes` | `1048576` | Maximum captured CLI output. |
 | `codexNoteHelper.confirmBeforeRun` | `appendAlways` | Control routine target-summary confirmations. |
 | `codexNoteHelper.ignoreCodexUserConfiguration` | `true` | Run with `--ignore-user-config` while retaining CLI authentication. |
+| `codexNoteHelper.applySaveBehavior` | `leaveUnsaved` | Leave applied edits unsaved, or save only if the note was clean immediately before Apply. VS Code Auto Save still applies. |
 
 English VS Code uses `English` as the output-language default; the Japanese
 catalog uses `Japanese`. An explicit user or workspace setting always wins.

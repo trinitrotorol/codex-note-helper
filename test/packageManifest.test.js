@@ -45,7 +45,7 @@ test("package manifest contributes the v0.3 commands without a conflicting keybi
   );
 
   assert.equal(manifest.name, "codex-note-helper");
-  assert.equal(manifest.version, "0.3.1");
+  assert.equal(manifest.version, "0.3.2");
   assert.equal(manifest.displayName, "%extension.displayName%");
   assert.equal(manifest.l10n, "./l10n");
   assert.equal(manifest.icon, "media/icon.png");
@@ -313,6 +313,18 @@ test("package manifest exposes bounded and reviewable generation settings", () =
   assert.equal(
     properties["codexNoteHelper.confirmBeforeRun"].default,
     "appendAlways"
+  );
+  assert.equal(
+    properties["codexNoteHelper.applySaveBehavior"].default,
+    "leaveUnsaved"
+  );
+  assert.deepEqual(properties["codexNoteHelper.applySaveBehavior"].enum, [
+    "leaveUnsaved",
+    "saveIfCleanBeforeApply"
+  ]);
+  assert.equal(
+    properties["codexNoteHelper.applySaveBehavior"].scope,
+    "resource"
   );
   assert.equal(properties["codexNoteHelper.showDiffAfterRun"], undefined);
   assert.equal(

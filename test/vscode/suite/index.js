@@ -67,15 +67,43 @@ async function run() {
   assert.equal(document.getText(), before);
   assert.equal(document.isDirty, false);
 
+  const sourceViewColumn = vscode.window.activeTextEditor.viewColumn;
+  await vscode.commands.executeCommand("markdown.showPreviewToSide");
+  const allTabs = () => vscode.window.tabGroups.all.flatMap((group) => group.tabs);
+  const markdownPreviewTabs = allTabs().filter(
+    (tab) =>
+      tab.input &&
+      typeof tab.input.viewType === "string" &&
+      tab.input.viewType.toLowerCase().includes("markdown")
+  );
+  assert.ok(markdownPreviewTabs.length > 0, "Markdown preview must open beside the note.");
+  await vscode.window.showTextDocument(document, {
+    preserveFocus: false,
+    preview: false,
+    viewColumn: sourceViewColumn
+  });
+
+  const beforeUri = vscode.Uri.file(path.join(workspacePath, "before.md"));
   const proposedUri = vscode.Uri.file(path.join(workspacePath, "proposed.md"));
   await vscode.commands.executeCommand(
     "vscode.diff",
-    noteUri,
+    beforeUri,
     proposedUri,
     "Codex Note Helper packaged apply test",
     { preview: true, viewColumn: vscode.ViewColumn.Beside }
   );
   assert.equal(document.isClosed, false, "The preview note must remain open beside the diff.");
+  const activeTabBeforeApply = vscode.window.tabGroups.activeTabGroup.activeTab;
+  const sourceTabs = () =>
+    allTabs()
+      .filter(
+        (tab) =>
+          tab.input &&
+          tab.input.uri &&
+          tab.input.uri.toString() === noteUri.toString()
+      );
+  const sourceTabsBeforeApply = sourceTabs();
+  assert.equal(sourceTabsBeforeApply[0].group.viewColumn, sourceViewColumn);
   const packagedRuntime = require(path.join(extension.extensionPath, "extension.js"));
   const insertion = "<!-- packaged-apply-test -->\n";
   await packagedRuntime.applyProposedEdits(document, before, document.version, {
@@ -85,6 +113,41 @@ async function run() {
   });
   assert.equal(document.getText(), insertion + before);
   assert.equal(document.isDirty, true);
+  assert.equal(
+    vscode.window.tabGroups.activeTabGroup.activeTab,
+    activeTabBeforeApply,
+    "Apply must not change the active tab or editor group."
+  );
+  assert.equal(
+    sourceTabs().length,
+    sourceTabsBeforeApply.length,
+    "Apply must not open another raw Markdown editor."
+  );
+  await packagedRuntime.closeGeneratedDiff({
+    originalUri: beforeUri,
+    proposedUri
+  });
+  assert.equal(
+    allTabs().some(
+      (tab) =>
+        tab.input &&
+        tab.input.original &&
+        tab.input.modified &&
+        tab.input.original.toString() === beforeUri.toString() &&
+        tab.input.modified.toString() === proposedUri.toString()
+    ),
+    false,
+    "Review completion must close the exact generated diff."
+  );
+  assert.ok(
+    markdownPreviewTabs.every((tab) => allTabs().includes(tab)),
+    "Closing the generated diff must preserve the Markdown preview."
+  );
+  await vscode.window.showTextDocument(document, {
+    preserveFocus: false,
+    preview: false,
+    viewColumn: sourceViewColumn
+  });
   await vscode.commands.executeCommand("undo");
   assert.equal(document.getText(), before);
   assert.equal(document.isDirty, false);

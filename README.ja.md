@@ -119,6 +119,7 @@ Codex Note Helper独自の解析・利用状況テレメトリ送信はありま
 | `codexNoteHelper.allowBundledCodexFromOpenAIExtension` | `false` | 公式同梱版への明示的なフォールバック。 |
 | `codexNoteHelper.enableWebSearch` | `false` | 情報源検証用の追加ネットワーク検索。 |
 | `codexNoteHelper.ignoreCodexUserConfiguration` | `true` | 認証を維持しつつユーザー設定を無視。 |
+| `codexNoteHelper.applySaveBehavior` | `leaveUnsaved` | 適用後は未保存のままにするか、適用直前まで保存済みだった場合だけ保存します。VS Codeの自動保存は引き続き有効です。 |
 
 その他の上限・確認設定はVS Codeの拡張機能設定画面に説明付きで表示されます。
 

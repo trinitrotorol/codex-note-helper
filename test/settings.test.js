@@ -17,8 +17,25 @@ test("validateOptions supplies safe defaults", () => {
   assert.equal(options.outputLanguage, "English");
   assert.equal(options.ignoreCodexUserConfiguration, true);
   assert.equal(options.showCodexProgress, true);
+  assert.equal(options.applySaveBehavior, "leaveUnsaved");
   assert.equal(options.showDiffAfterRun, undefined);
   assert.equal(options.logLevel, undefined);
+});
+
+test("Apply save behavior accepts only the safe declared policies", () => {
+  assert.equal(
+    validateOptions({ applySaveBehavior: "leaveUnsaved" }).applySaveBehavior,
+    "leaveUnsaved"
+  );
+  assert.equal(
+    validateOptions({ applySaveBehavior: "saveIfCleanBeforeApply" })
+      .applySaveBehavior,
+    "saveIfCleanBeforeApply"
+  );
+  assert.throws(
+    () => validateOptions({ applySaveBehavior: "alwaysSave" }),
+    /Apply save behavior/u
+  );
 });
 
 test("validateOptions rejects fractional heading levels and invalid ranges", () => {

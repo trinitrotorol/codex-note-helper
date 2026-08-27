@@ -90,6 +90,7 @@ function createDocument(
   let text = initialText;
   const document = {
     isClosed: false,
+    isDirty: false,
     languageId: "markdown",
     uri: createUri({
       scheme: "file",
@@ -105,6 +106,7 @@ function createDocument(
     },
     replaceText(nextText) {
       text = nextText;
+      this.isDirty = true;
       this.version += 1;
     }
   };
@@ -117,6 +119,10 @@ function createWorkflowHarness(options = {}) {
   const executedCommands = [];
   const diffCalls = [];
   const editCalls = [];
+  const saveCalls = [];
+  const showTextDocumentCalls = [];
+  const workspaceEditCalls = [];
+  const closedTabCalls = [];
   const resolverCalls = [];
   const informationMessages = [];
   const warningMessages = [];
@@ -145,7 +151,9 @@ function createWorkflowHarness(options = {}) {
   const successDecision = createDeferred();
   let editAttempt = 0;
   let reviewCount = 0;
+  let saveAttempt = 0;
   let showTextDocumentAttempt = 0;
+  let tabGroupsState = [];
 
   class Range {
     constructor(start, end) {
@@ -163,7 +171,32 @@ function createWorkflowHarness(options = {}) {
 
   class Selection extends Range {}
 
-  function createEditor(targetDocument) {
+  class WorkspaceEdit {
+    constructor() {
+      this.operations = [];
+    }
+
+    replace(uri, range, replacement) {
+      this.operations.push({ range, replacement, uri });
+    }
+
+    entries() {
+      const editsByUri = new Map();
+      for (const operation of this.operations) {
+        const key = operation.uri.toString();
+        if (!editsByUri.has(key)) {
+          editsByUri.set(key, { edits: [], uri: operation.uri });
+        }
+        editsByUri.get(key).edits.push({
+          newText: operation.replacement,
+          range: operation.range
+        });
+      }
+      return [...editsByUri.values()].map(({ edits, uri }) => [uri, edits]);
+    }
+  }
+
+  function createEditor(targetDocument, viewColumn = 1) {
     const targetEditor = {
       document: targetDocument,
       edit: async (callback, editOptions) => {
@@ -200,13 +233,38 @@ function createWorkflowHarness(options = {}) {
         targetDocument.replaceText(updatedText);
         return true;
       },
-      revealRange() {}
+      revealRange() {},
+      viewColumn
     };
     editorsByDocument.set(targetDocument, targetEditor);
     return targetEditor;
   }
 
-  const editor = createEditor(document);
+  document.isDirty = options.documentInitiallyDirty === true;
+  document.save = async () => {
+    saveCalls.push({ document });
+    const configuredResult = Array.isArray(options.documentSaveResults)
+      ? options.documentSaveResults[
+          Math.min(saveAttempt, options.documentSaveResults.length - 1)
+        ]
+      : options.documentSaveResult;
+    saveAttempt += 1;
+    if (configuredResult instanceof Error) {
+      throw configuredResult;
+    }
+    if (configuredResult === false) {
+      return false;
+    }
+    if (typeof options.afterDocumentSave === "function") {
+      await options.afterDocumentSave(document);
+    }
+    if (!options.documentDirtyAfterSave) {
+      document.isDirty = false;
+    }
+    return true;
+  };
+
+  const editor = createEditor(document, options.sourceViewColumn || 1);
 
   const configValues = {
     allowBundledCodexFromOpenAIExtension: false,
@@ -225,6 +283,7 @@ function createWorkflowHarness(options = {}) {
     researchField: "",
     showCodexProgress: false,
     timeoutSeconds: 30,
+    applySaveBehavior: "leaveUnsaved",
     ...options.configuration
   };
   const explicitlyConfiguredValues = new Set(
@@ -232,6 +291,69 @@ function createWorkflowHarness(options = {}) {
   );
 
   const workspace = {
+    async applyEdit(workspaceEdit) {
+      workspaceEditCalls.push(workspaceEdit);
+      const failureLimit = options.workspaceApplyEditFailures || 0;
+      const configuredResult = Array.isArray(options.workspaceApplyEditResults)
+        ? options.workspaceApplyEditResults[
+            Math.min(editAttempt, options.workspaceApplyEditResults.length - 1)
+          ]
+        : Array.isArray(options.editorEditResults)
+          ? options.editorEditResults[
+              Math.min(editAttempt, options.editorEditResults.length - 1)
+            ]
+          : options.workspaceApplyEditResult ?? options.editorEditResult;
+      editAttempt += 1;
+      if (editAttempt <= failureLimit) {
+        throw new Error("workspace edit unavailable");
+      }
+      if (configuredResult instanceof Error) {
+        throw configuredResult;
+      }
+
+      const operations = workspaceEdit.operations || [];
+      const operationsByDocument = new Map();
+      for (const operation of operations) {
+        const targetDocument = workspace.textDocuments.find(
+          (candidate) => candidate.uri.toString() === operation.uri.toString()
+        );
+        assert.ok(targetDocument, "workspace edits must target an open document");
+        if (!operationsByDocument.has(targetDocument)) {
+          operationsByDocument.set(targetDocument, []);
+        }
+        operationsByDocument.get(targetDocument).push(operation);
+      }
+      for (const [targetDocument, replacements] of operationsByDocument) {
+        editCalls.push({
+          document: targetDocument,
+          options: undefined,
+          replacements: replacements.map(({ range, replacement }) => ({
+            range,
+            replacement
+          }))
+        });
+      }
+      if (configuredResult === false) {
+        return false;
+      }
+
+      for (const [targetDocument, replacements] of operationsByDocument) {
+        let updatedText = targetDocument.getText();
+        for (const operation of [...replacements].sort(
+          (left, right) => right.range.start.offset - left.range.start.offset
+        )) {
+          updatedText =
+            updatedText.slice(0, operation.range.start.offset) +
+            operation.replacement +
+            updatedText.slice(operation.range.end.offset);
+        }
+        targetDocument.replaceText(updatedText);
+        if (options.autoSaveAfterApply) {
+          targetDocument.isDirty = false;
+        }
+      }
+      return true;
+    },
     isTrusted: true,
     textDocuments: [document],
     workspaceFolders: [],
@@ -296,6 +418,16 @@ function createWorkflowHarness(options = {}) {
     }
   };
 
+  function closeSourceDocument() {
+    document.isClosed = true;
+    workspace.textDocuments = workspace.textDocuments.filter(
+      (candidate) => candidate !== document
+    );
+    if (closeDocumentListener) {
+      closeDocumentListener(document);
+    }
+  }
+
   const vscodeMock = {
     ConfigurationTarget: { Global: 1, WorkspaceFolder: 3 },
     Position,
@@ -304,6 +436,7 @@ function createWorkflowHarness(options = {}) {
     Selection,
     StatusBarAlignment: { Right: 2 },
     ViewColumn: { Beside: -2 },
+    WorkspaceEdit,
     Uri: {
       from: createUri,
       joinPath(base, ...parts) {
@@ -349,6 +482,29 @@ function createWorkflowHarness(options = {}) {
     l10n: { t: translate },
     window: {
       activeTextEditor: editor,
+      visibleTextEditors: [editor],
+      tabGroups: {
+        get all() {
+          return tabGroupsState;
+        },
+        async close(tabs, preserveFocus) {
+          const requestedTabs = Array.isArray(tabs) ? [...tabs] : [tabs];
+          closedTabCalls.push({ preserveFocus, tabs: requestedTabs });
+          for (const group of tabGroupsState) {
+            group.tabs = group.tabs.filter(
+              (candidate) => !requestedTabs.includes(candidate)
+            );
+          }
+          if (typeof options.duringTabClose === "function") {
+            await options.duringTabClose(
+              document,
+              workspace,
+              closeSourceDocument
+            );
+          }
+          return options.tabCloseResult !== false;
+        }
+      },
       createStatusBarItem() {
         const item = {
           visible: false,
@@ -424,7 +580,8 @@ function createWorkflowHarness(options = {}) {
         }
         return undefined;
       },
-      async showTextDocument(openDocument) {
+      async showTextDocument(openDocument, showOptions) {
+        showTextDocumentCalls.push({ document: openDocument, options: showOptions });
         const failureLimit = options.showTextDocumentFailures || 0;
         showTextDocumentAttempt += 1;
         if (showTextDocumentAttempt <= failureLimit) {
@@ -432,6 +589,15 @@ function createWorkflowHarness(options = {}) {
         }
         const targetEditor = editorsByDocument.get(openDocument);
         assert.ok(targetEditor, "the requested document must have an editor");
+        if (showOptions && showOptions.viewColumn !== undefined) {
+          targetEditor.viewColumn = showOptions.viewColumn;
+        }
+        if (!vscodeMock.window.visibleTextEditors.includes(targetEditor)) {
+          vscodeMock.window.visibleTextEditors = [
+            ...vscodeMock.window.visibleTextEditors,
+            targetEditor
+          ];
+        }
         vscodeMock.window.activeTextEditor = targetEditor;
         if (activeTextEditorListener) {
           activeTextEditorListener(targetEditor);
@@ -452,6 +618,12 @@ function createWorkflowHarness(options = {}) {
       },
       async showWarningMessage(message, ...actions) {
         warningMessages.push(message);
+        if (
+          options.failWarningNotification &&
+          message.startsWith("Applied ")
+        ) {
+          throw new Error("warning notification unavailable");
+        }
         if (options.warningChoice) {
           return actions.find((action) => action === options.warningChoice);
         }
@@ -476,7 +648,7 @@ function createWorkflowHarness(options = {}) {
     ["approvedExecutableFingerprints", [EXECUTABLE_KEY]]
   ]);
   const context = {
-    extension: { packageJSON: { version: "0.3.1" } },
+    extension: { packageJSON: { version: "0.3.2" } },
     extensionUri: createUri({
       scheme: "file",
       path: "/extension",
@@ -647,11 +819,10 @@ function createWorkflowHarness(options = {}) {
       changeDocumentListener({ contentChanges: [], document });
     },
     closeDocument() {
-      document.isClosed = true;
-      workspace.textDocuments = [];
-      closeDocumentListener(document);
+      closeSourceDocument();
     },
     commands,
+    closedTabCalls,
     configUpdates,
     configValues,
     contentProvider,
@@ -660,6 +831,7 @@ function createWorkflowHarness(options = {}) {
     diagnostics,
     diffCalls,
     document,
+    editor,
     editCalls,
     errorMessages,
     executedCommands,
@@ -701,6 +873,17 @@ function createWorkflowHarness(options = {}) {
     },
     reviewStarted: reviewStarted.promise,
     runProcessCalls,
+    saveCalls,
+    setDocumentDirty(value) {
+      document.isDirty = value;
+    },
+    setVisibleEditors(editors) {
+      vscodeMock.window.visibleTextEditors = [...editors];
+    },
+    setTabGroups(groups) {
+      tabGroupsState = groups;
+    },
+    showTextDocumentCalls,
     statusBarItems,
     vscode: vscodeMock,
     warningMessages,
@@ -712,6 +895,7 @@ function createWorkflowHarness(options = {}) {
         reviewCountWaiters.push({ count, resolve });
       });
     },
+    workspaceEditCalls,
     workspace,
     async dispose() {
       await extension.deactivate();
@@ -773,10 +957,6 @@ test("public fill command previews a diff and applies only validated target rang
     assert.ok(review);
     assert.deepEqual(review.actions, ["Apply changes", "Discard"]);
     assert.equal(harness.editCalls.length, 1);
-    assert.deepEqual(harness.editCalls[0].options, {
-      undoStopAfter: true,
-      undoStopBefore: true
-    });
     assert.equal(harness.editCalls[0].replacements.length, 1);
 
     const [{ range }] = harness.editCalls[0].replacements;
@@ -798,6 +978,520 @@ test("public fill command previews a diff and applies only validated target rang
       /<!-- codex-note-helper:generated:start id=heading-[a-f0-9]{64}-1 -->\nGenerated paragraph\./u
     );
   });
+});
+
+test("apply preserves arbitrary editor layouts and edits only the source note", async (t) => {
+  const layouts = [
+    { activeColumn: 2, name: "source on the left", sourceColumn: 1 },
+    { activeColumn: 1, name: "source on the right", sourceColumn: 2 },
+    { activeColumn: 3, name: "source among four groups", sourceColumn: 4 }
+  ];
+
+  for (const layout of layouts) {
+    await t.test(layout.name, async () => {
+      const harness = createWorkflowHarness({
+        deferReview: true,
+        sourceViewColumn: layout.sourceColumn
+      });
+      try {
+        const originalText = harness.document.getText();
+        const other = harness.addDocument(
+          "# Other\nunchanged\n",
+          path.join(path.parse(process.cwd()).root, "notes", "other.md"),
+          "/notes/other.md"
+        );
+        other.editor.viewColumn = layout.sourceColumn === 1 ? 2 : 1;
+
+        const fillPromise = harness.vscode.commands.executeCommand(
+          "codexNoteHelper.fillWithCodex"
+        );
+        await harness.reviewStarted;
+
+        const reviewEditor = {
+          document: { uri: harness.diffCalls[0][1] },
+          viewColumn: layout.activeColumn
+        };
+        const extraEditor = {
+          document: {
+            uri: createUri({ scheme: "file", path: "/notes/extra.md" })
+          },
+          viewColumn: 3
+        };
+        const visibleEditors = [
+          other.editor,
+          reviewEditor,
+          harness.editor,
+          extraEditor
+        ];
+        const visibleColumns = visibleEditors.map(({ viewColumn }) => viewColumn);
+        harness.setVisibleEditors(visibleEditors);
+        harness.focusEditor(reviewEditor);
+
+        harness.resolveReview();
+        await fillPromise;
+
+        assert.equal(harness.showTextDocumentCalls.length, 0);
+        assert.equal(harness.workspaceEditCalls.length, 1);
+        const operations = harness.workspaceEditCalls[0].operations;
+        assert.ok(
+          operations.length > 0,
+          "the workspace edit must contain validated replacements"
+        );
+        assert.ok(
+          operations.every(
+            ({ uri }) => uri.toString() === harness.document.uri.toString()
+          ),
+          "the workspace edit must target only the source note"
+        );
+        const untouchedStart = originalText.indexOf("# Untouched");
+        assert.ok(
+          operations.every(
+            ({ range, replacement }) =>
+              range.start.offset >= "# Empty\n".length &&
+              range.end.offset <= untouchedStart &&
+              typeof replacement === "string" &&
+              replacement.includes("codex-note-helper:generated:start")
+          ),
+          "every workspace replacement must stay inside the reviewed target range"
+        );
+        assert.equal(harness.vscode.window.activeTextEditor, reviewEditor);
+        assert.deepEqual(harness.vscode.window.visibleTextEditors, visibleEditors);
+        assert.deepEqual(
+          harness.vscode.window.visibleTextEditors.map(({ viewColumn }) => viewColumn),
+          visibleColumns
+        );
+        assert.equal(harness.editor.viewColumn, layout.sourceColumn);
+        assert.equal(other.document.getText(), "# Other\nunchanged\n");
+        assert.notEqual(harness.document.getText(), originalText);
+      } finally {
+        await harness.dispose();
+      }
+    });
+  }
+});
+
+test("review completion closes only the exact extension-owned diff tab", async () => {
+  const harness = createWorkflowHarness({ deferReview: true });
+  try {
+    const fillPromise = harness.vscode.commands.executeCommand(
+      "codexNoteHelper.fillWithCodex"
+    );
+    await harness.reviewStarted;
+
+    const [originalUri, proposedUri] = harness.diffCalls[0];
+    const ownedDiff = {
+      input: { original: originalUri, modified: proposedUri }
+    };
+    const unrelatedDiff = {
+      input: {
+        original: originalUri,
+        modified: createUri({ scheme: "file", path: "/notes/unrelated.md" })
+      }
+    };
+    const markdownPreview = { input: { viewType: "vscode.markdown.preview.editor" } };
+    const groups = [
+      { tabs: [markdownPreview, ownedDiff] },
+      { tabs: [unrelatedDiff] }
+    ];
+    harness.setTabGroups(groups);
+
+    harness.resolveReview();
+    await fillPromise;
+
+    assert.equal(harness.closedTabCalls.length, 1);
+    assert.deepEqual(harness.closedTabCalls[0], {
+      preserveFocus: true,
+      tabs: [ownedDiff]
+    });
+    assert.deepEqual(groups[0].tabs, [markdownPreview]);
+    assert.deepEqual(groups[1].tabs, [unrelatedDiff]);
+  } finally {
+    await harness.dispose();
+  }
+});
+
+test("leaveUnsaved is the default and never explicitly saves after apply", async () => {
+  await withHarness({}, async (harness) => {
+    const originalText = harness.document.getText();
+
+    await harness.vscode.commands.executeCommand("codexNoteHelper.fillWithCodex");
+
+    assert.equal(harness.configValues.applySaveBehavior, "leaveUnsaved");
+    assert.equal(harness.workspaceEditCalls.length, 1);
+    assert.equal(harness.saveCalls.length, 0);
+    assert.equal(harness.document.isDirty, true);
+    assert.notEqual(harness.document.getText(), originalText);
+  });
+});
+
+test("saveIfCleanBeforeApply uses the dirty state immediately before apply", async (t) => {
+  const scenarios = [
+    {
+      dirtyAtGeneration: false,
+      dirtyBeforeApply: true,
+      expectedSaveCalls: 0,
+      name: "became dirty during review"
+    },
+    {
+      dirtyAtGeneration: true,
+      dirtyBeforeApply: false,
+      expectedSaveCalls: 1,
+      name: "became clean during review"
+    }
+  ];
+
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, async () => {
+      const harness = createWorkflowHarness({
+        configuration: { applySaveBehavior: "saveIfCleanBeforeApply" },
+        deferReview: true,
+        documentInitiallyDirty: scenario.dirtyAtGeneration
+      });
+      try {
+        const originalText = harness.document.getText();
+        const fillPromise = harness.vscode.commands.executeCommand(
+          "codexNoteHelper.fillWithCodex"
+        );
+        await harness.reviewStarted;
+        harness.setDocumentDirty(scenario.dirtyBeforeApply);
+
+        harness.resolveReview();
+        await fillPromise;
+
+        assert.equal(harness.workspaceEditCalls.length, 1);
+        assert.equal(harness.saveCalls.length, scenario.expectedSaveCalls);
+        assert.notEqual(harness.document.getText(), originalText);
+        assert.equal(
+          harness.document.isDirty,
+          scenario.expectedSaveCalls === 0
+        );
+      } finally {
+        await harness.dispose();
+      }
+    });
+  }
+});
+
+test("save failures keep the applied content without retrying the edit", async (t) => {
+  for (const [name, documentSaveResult] of [
+    ["save resolves false", false],
+    ["save rejects", new Error("disk unavailable")]
+  ]) {
+    await t.test(name, async () => {
+      await withHarness(
+        {
+          configuration: { applySaveBehavior: "saveIfCleanBeforeApply" },
+          documentSaveResult
+        },
+        async (harness) => {
+          const originalText = harness.document.getText();
+
+          await harness.vscode.commands.executeCommand(
+            "codexNoteHelper.fillWithCodex"
+          );
+
+          assert.equal(harness.workspaceEditCalls.length, 1);
+          assert.equal(harness.editCalls.length, 1);
+          assert.equal(harness.saveCalls.length, 1);
+          assert.notEqual(harness.document.getText(), originalText);
+          assert.equal(harness.document.isDirty, true);
+          assert.ok(
+            harness.warningMessages.some(
+              (message) =>
+                message.startsWith("Applied ") &&
+                message.includes("Saving failed")
+            )
+          );
+          assert.equal(
+            harness.contextKeys.get("codexNoteHelper.hasPendingReview"),
+            false
+          );
+        }
+      );
+    });
+  }
+});
+
+test("Apply uses the current save setting when a pending review is decided", async (t) => {
+  for (const scenario of [
+    {
+      after: "leaveUnsaved",
+      before: "saveIfCleanBeforeApply",
+      expectedSaveCalls: 0,
+      expectedDirty: true,
+      name: "a changed setting can prevent a save"
+    },
+    {
+      after: "saveIfCleanBeforeApply",
+      before: "leaveUnsaved",
+      expectedSaveCalls: 1,
+      expectedDirty: false,
+      name: "a changed setting can opt into a safe save"
+    }
+  ]) {
+    await t.test(scenario.name, async () => {
+      const harness = createWorkflowHarness({
+        configuration: { applySaveBehavior: scenario.before },
+        deferReview: true
+      });
+      try {
+        const fillPromise = harness.vscode.commands.executeCommand(
+          "codexNoteHelper.fillWithCodex"
+        );
+        await harness.reviewStarted;
+        harness.changeConfiguration("applySaveBehavior", scenario.after);
+
+        harness.resolveReview();
+        await fillPromise;
+
+        assert.equal(harness.saveCalls.length, scenario.expectedSaveCalls);
+        assert.equal(harness.document.isDirty, scenario.expectedDirty);
+      } finally {
+        await harness.dispose();
+      }
+    });
+  }
+});
+
+test("post-Apply save outcomes use accurate notification severity", async (t) => {
+  const scenarios = [
+    {
+      expectedFragment: "The note is saved",
+      expectedSeverity: "information",
+      name: "explicit save",
+      options: {}
+    },
+    {
+      expectedFragment: "The note is saved",
+      expectedSeverity: "information",
+      name: "VS Code already auto-saved",
+      options: { autoSaveAfterApply: true }
+    },
+    {
+      expectedFragment: "already contained unsaved changes",
+      expectedSeverity: "warning",
+      name: "pre-existing dirty content",
+      options: { documentInitiallyDirty: true }
+    },
+    {
+      expectedFragment: "Save-time actions changed",
+      expectedSeverity: "warning",
+      name: "save participant changed content",
+      options: {
+        afterDocumentSave(document) {
+          document.replaceText(`${document.getText()}\n<!-- save participant -->`);
+        }
+      }
+    },
+    {
+      expectedFragment: "changed after Apply and has unsaved changes",
+      expectedSeverity: "warning",
+      name: "a concurrent change remains dirty after save",
+      options: {
+        afterDocumentSave(document) {
+          document.replaceText(`${document.getText()}\n<!-- concurrent edit -->`);
+        },
+        documentDirtyAfterSave: true
+      }
+    }
+  ];
+
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, async () => {
+      await withHarness(
+        {
+          ...scenario.options,
+          configuration: { applySaveBehavior: "saveIfCleanBeforeApply" }
+        },
+        async (harness) => {
+          await harness.vscode.commands.executeCommand(
+            "codexNoteHelper.fillWithCodex"
+          );
+
+          const information = harness.informationMessages
+            .map(({ message }) => message)
+            .find((message) => message.startsWith("Applied "));
+          const warning = harness.warningMessages.find((message) =>
+            message.startsWith("Applied ")
+          );
+          const notification =
+            scenario.expectedSeverity === "warning" ? warning : information;
+          assert.match(notification, new RegExp(scenario.expectedFragment, "u"));
+          assert.equal(
+            scenario.expectedSeverity === "warning" ? information : warning,
+            undefined
+          );
+        }
+      );
+    });
+  }
+});
+
+test("the completion notification rechecks document state after diff cleanup", async () => {
+  const harness = createWorkflowHarness({
+    configuration: { applySaveBehavior: "saveIfCleanBeforeApply" },
+    deferReview: true,
+    duringTabClose(document) {
+      document.replaceText(`${document.getText()}\n<!-- changed during cleanup -->`);
+    }
+  });
+  try {
+    const fillPromise = harness.vscode.commands.executeCommand(
+      "codexNoteHelper.fillWithCodex"
+    );
+    await harness.reviewStarted;
+    const [originalUri, proposedUri] = harness.diffCalls[0];
+    harness.setTabGroups([
+      {
+        tabs: [{ input: { original: originalUri, modified: proposedUri } }]
+      }
+    ]);
+
+    harness.resolveReview();
+    await fillPromise;
+
+    assert.equal(harness.saveCalls.length, 1);
+    assert.equal(harness.document.isDirty, true);
+    assert.ok(
+      harness.warningMessages.some(
+        (message) =>
+          message.startsWith("Applied ") &&
+          message.includes("changed after Apply and has unsaved changes")
+      )
+    );
+    assert.equal(
+      harness.informationMessages.some(({ message }) =>
+        message.includes("The note is saved")
+      ),
+      false
+    );
+  } finally {
+    await harness.dispose();
+  }
+});
+
+test("closing the source during diff cleanup never reports it as saved", async () => {
+  const harness = createWorkflowHarness({
+    deferReview: true,
+    duringTabClose(document, _workspace, closeSourceDocument) {
+      // VS Code clears dirty state when a document is disposed, including when
+      // the user closes it and chooses not to save the applied edit.
+      document.isDirty = false;
+      closeSourceDocument();
+    }
+  });
+  try {
+    const fillPromise = harness.vscode.commands.executeCommand(
+      "codexNoteHelper.fillWithCodex"
+    );
+    await harness.reviewStarted;
+    const [originalUri, proposedUri] = harness.diffCalls[0];
+    harness.setTabGroups([
+      {
+        tabs: [{ input: { original: originalUri, modified: proposedUri } }]
+      }
+    ]);
+
+    harness.resolveReview();
+    await fillPromise;
+
+    assert.equal(harness.document.isClosed, true);
+    assert.equal(harness.saveCalls.length, 0);
+    assert.ok(
+      harness.warningMessages.some(
+        (message) =>
+          message.startsWith("Applied ") &&
+          message.includes("whether the reviewed changes were kept could not be verified")
+      )
+    );
+    assert.equal(
+      harness.informationMessages.some(({ message }) =>
+        message.includes("The note is saved")
+      ),
+      false
+    );
+    assert.equal(harness.errorMessages.length, 0);
+    assert.equal(harness.failureLogs.length, 0);
+  } finally {
+    await harness.dispose();
+  }
+});
+
+test("replacing the source instance during cleanup never reports it as saved", async () => {
+  const harness = createWorkflowHarness({
+    deferReview: true,
+    duringTabClose(document, workspace) {
+      document.isDirty = false;
+      const replacement = createDocument(
+        document.getText(),
+        document.uri.fsPath,
+        document.uri.path
+      );
+      workspace.textDocuments = [replacement];
+    }
+  });
+  try {
+    const fillPromise = harness.vscode.commands.executeCommand(
+      "codexNoteHelper.fillWithCodex"
+    );
+    await harness.reviewStarted;
+    const [originalUri, proposedUri] = harness.diffCalls[0];
+    harness.setTabGroups([
+      {
+        tabs: [{ input: { original: originalUri, modified: proposedUri } }]
+      }
+    ]);
+
+    harness.resolveReview();
+    await fillPromise;
+
+    assert.equal(harness.document.isClosed, false);
+    assert.equal(harness.saveCalls.length, 0);
+    assert.ok(
+      harness.warningMessages.some(
+        (message) =>
+          message.startsWith("Applied ") &&
+          message.includes("whether the reviewed changes were kept could not be verified")
+      )
+    );
+    assert.equal(
+      harness.informationMessages.some(({ message }) =>
+        message.includes("The note is saved")
+      ),
+      false
+    );
+    assert.equal(harness.errorMessages.length, 0);
+    assert.equal(harness.failureLogs.length, 0);
+  } finally {
+    await harness.dispose();
+  }
+});
+
+test("a rejected post-Apply warning cannot turn an applied edit into a failure", async () => {
+  await withHarness(
+    {
+      configuration: { applySaveBehavior: "saveIfCleanBeforeApply" },
+      documentSaveResult: false,
+      failWarningNotification: true
+    },
+    async (harness) => {
+      const originalText = harness.document.getText();
+
+      await harness.vscode.commands.executeCommand(
+        "codexNoteHelper.fillWithCodex"
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+
+      assert.notEqual(harness.document.getText(), originalText);
+      assert.equal(harness.workspaceEditCalls.length, 1);
+      assert.equal(harness.failureLogs.length, 0);
+      assert.ok(
+        harness.diagnostics.some((message) =>
+          message.includes("confirmation could not be shown")
+        )
+      );
+    }
+  );
 });
 
 test("CLI source selection requires explicit bundled opt-in and starts no process", async () => {
@@ -1680,8 +2374,8 @@ test("discard is explicit and transient apply failures keep the review recoverab
     });
   });
 
-  await t.test("TextEditor.edit resolves false", async () => {
-    await withHarness({ editorEditResults: [false, true] }, async (harness) => {
+  await t.test("workspace.applyEdit resolves false", async () => {
+    await withHarness({ workspaceApplyEditResults: [false, true] }, async (harness) => {
       const originalText = harness.document.getText();
       const fillPromise = harness.vscode.commands.executeCommand(
         "codexNoteHelper.fillWithCodex"
@@ -1723,8 +2417,8 @@ test("discard is explicit and transient apply failures keep the review recoverab
     });
   });
 
-  await t.test("showTextDocument rejects once", async () => {
-    await withHarness({ showTextDocumentFailures: 1 }, async (harness) => {
+  await t.test("workspace.applyEdit rejects once", async () => {
+    await withHarness({ workspaceApplyEditFailures: 1 }, async (harness) => {
       const originalText = harness.document.getText();
       const fillPromise = harness.vscode.commands.executeCommand(
         "codexNoteHelper.fillWithCodex"

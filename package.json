@@ -2,7 +2,7 @@
   "name": "codex-note-helper",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "trinitrotorol",
   "license": "MIT",
   "repository": {
@@ -448,6 +448,25 @@
           "markdownDescription": "%configuration.ignoreCodexUserConfiguration.description%",
           "scope": "machine",
           "order": 160
+        },
+        "codexNoteHelper.applySaveBehavior": {
+          "type": "string",
+          "default": "leaveUnsaved",
+          "enum": [
+            "leaveUnsaved",
+            "saveIfCleanBeforeApply"
+          ],
+          "enumItemLabels": [
+            "%configuration.applySaveBehavior.label.leaveUnsaved%",
+            "%configuration.applySaveBehavior.label.saveIfCleanBeforeApply%"
+          ],
+          "enumDescriptions": [
+            "%configuration.applySaveBehavior.enum.leaveUnsaved%",
+            "%configuration.applySaveBehavior.enum.saveIfCleanBeforeApply%"
+          ],
+          "markdownDescription": "%configuration.applySaveBehavior.description%",
+          "scope": "resource",
+          "order": 170
         }
       }
     }

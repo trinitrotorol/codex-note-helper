@@ -6,10 +6,11 @@ configured for Codex, not as an offline or local-only model.
 
 ## Supported Versions
 
-Security fixes are provided for the latest released version only. Version 0.3.1
+Security fixes are provided for the latest released version only. Version 0.3.2
 uses the structured-proposal and validated-application design introduced in
-0.3.0, and adds recoverable pending reviews plus allowlisted preflight reason
-codes without weakening the review or logging boundaries.
+0.3.0, retains recoverable pending reviews and allowlisted preflight reason
+codes, and adds layout-preserving text-only Apply plus fail-closed save-state
+reporting without weakening the review or logging boundaries.
 
 ## Trust and Workspace Requirements
 
@@ -140,7 +141,7 @@ Codex returns a proposal shaped as:
 }
 ```
 
-Before using `TextEditor.edit`, the extension checks:
+Before constructing a text-only `WorkspaceEdit`, the extension checks:
 
 - JSON and schema validity;
 - output byte and update-count limits;
@@ -169,11 +170,19 @@ The extension captures the same open document instance, its in-memory version,
 and its complete text before generation, then checks all three again before
 review and application. This snapshot does not save the document, create a
 source-control revision, or read repository history. Accepted changes replace
-only the validated target ranges through one `TextEditor.edit` undo step, remain
-unsaved until the user saves them, and participate in normal undo. A diff is
-mandatory before the apply action is offered. Generated Markdown can still
-contain inaccurate statements or misleading citations; review it as untrusted
-generated content even after structural safety checks.
+only the validated target ranges through one text-only `WorkspaceEdit`, which
+uses VS Code's all-or-nothing application behavior and participates in normal
+undo without opening, moving, or focusing an editor. The default
+`codexNoteHelper.applySaveBehavior` leaves the result unsaved. Its opt-in mode
+calls VS Code's normal document save only when the note was clean immediately
+before Apply; it never writes around VS Code's save pipeline. VS Code Auto Save
+and save-time formatters, code actions, listeners, or file watchers remain in
+effect. The completion notice rechecks the same open document after diff cleanup;
+if that document was closed or replaced, the extension treats its persisted state
+as unknown and warns instead of reporting it as saved. A diff is mandatory before
+the apply action is offered. Generated
+Markdown can still contain inaccurate statements or misleading citations;
+review it as untrusted generated content even after structural safety checks.
 
 The Apply and Discard decision is stored only in extension-host memory while a
 review is pending. Hiding, closing, or clearing the notification is not a
@@ -183,7 +192,9 @@ remains bound to the original document object, URI, in-memory version, complete
 text snapshot, and preview URIs. Editing, closing, reopening, cancelling, or
 deactivating invalidates it and removes the extension-owned preview content and
 pending state. Apply performs the snapshot check again immediately before the
-single editor edit.
+single workspace edit. When the review ends, only a diff tab whose two random
+preview URIs exactly match that review is closed; unrelated tabs and editor
+groups are not changed.
 
 ## Progress and Cancellation
 
@@ -213,7 +224,7 @@ Diagnostic logs are stored only in extension-owned global storage. They always
 contain bounded timestamps, process-start state, allowlisted phase/reason codes,
 counts, and truncation flags only when a process started. Prompts, model output,
 stdout, stderr, stack traces, paths, command arguments, headings, unknown error
-codes, and raw error messages are never written. Version 0.3.1 does not create
+codes, and raw error messages are never written. Version 0.3.2 does not create
 or append a log in the workspace; the removed workspace-log setting is ignored.
 
 - Log and notification strings are bounded.

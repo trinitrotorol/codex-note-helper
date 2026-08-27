@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.2
+
+- Apply reviewed updates with a text-only VS Code workspace edit so editor
+  groups, focus, and Markdown preview placement remain unchanged. Close only
+  the exact extension-owned diff tab when a review ends.
+- Add an Apply save-behavior setting. The safe default leaves edits unsaved;
+  the opt-in mode saves only documents that were clean immediately before
+  Apply, while continuing to respect VS Code Auto Save. Save failures,
+  save-time changes, and a source document closed during cleanup are reported
+  without retrying or misreporting the edit as saved.
+
 ## 0.3.1
 
 - Keep generated proposals pending when the review notification is hidden or

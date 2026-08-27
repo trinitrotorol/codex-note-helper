@@ -414,11 +414,25 @@ function getConfiguration(document) {
     maxInputCharacters: config.get("maxInputCharacters", 500000),
     maxOutputBytes: config.get("maxOutputBytes", 1048576),
     confirmBeforeRun: config.get("confirmBeforeRun", "appendAlways"),
+    applySaveBehavior: config.get("applySaveBehavior", "leaveUnsaved"),
     ignoreCodexUserConfiguration: config.get(
       "ignoreCodexUserConfiguration",
       true
     )
   });
+}
+
+function getApplySaveBehavior(document) {
+  try {
+    const value = vscode.workspace
+      .getConfiguration("codexNoteHelper", document && document.uri)
+      .get("applySaveBehavior", "leaveUnsaved");
+    return value === "saveIfCleanBeforeApply"
+      ? "saveIfCleanBeforeApply"
+      : "leaveUnsaved";
+  } catch (_error) {
+    return "leaveUnsaved";
+  }
 }
 
 function readCliConfiguration(document) {
@@ -1066,6 +1080,49 @@ async function showGeneratedDiff(preview, documentLabel) {
   );
 }
 
+function sameUri(left, right) {
+  return Boolean(
+    left &&
+      right &&
+      typeof left.toString === "function" &&
+      typeof right.toString === "function" &&
+      left.toString() === right.toString()
+  );
+}
+
+async function closeGeneratedDiff(preview) {
+  const tabGroups = vscode.window.tabGroups;
+  if (
+    !preview ||
+    !tabGroups ||
+    !Array.isArray(tabGroups.all) ||
+    typeof tabGroups.close !== "function"
+  ) {
+    return;
+  }
+  const tabs = tabGroups.all.flatMap((group) =>
+    Array.isArray(group && group.tabs) ? group.tabs : []
+  );
+  const ownedTabs = tabs.filter((tab) => {
+    const input = tab && tab.input;
+    if (!input || !sameUri(input.original, preview.originalUri)) {
+      return false;
+    }
+    return sameUri(input.modified, preview.proposedUri);
+  });
+  if (ownedTabs.length === 0) {
+    return;
+  }
+  try {
+    const closed = await tabGroups.close(ownedTabs, true);
+    if (closed === false) {
+      reportReviewUiFailure(t("The generated diff tab could not be closed."));
+    }
+  } catch (_error) {
+    reportReviewUiFailure(t("The generated diff tab could not be closed."));
+  }
+}
+
 async function openGeneratedDiff(originalText, proposedText, documentLabel) {
   const preview = {
     originalUri: previewProvider.add("before", originalText),
@@ -1177,13 +1234,13 @@ async function requestApply({
       }
       onPhase("applying");
       try {
-        await applyProposedEdits(
+        return await applyProposedEdits(
           document,
           originalText,
           originalVersion,
-          application
+          application,
+          getApplySaveBehavior(document)
         );
-        return true;
       } catch (error) {
         if (!error || error.reviewRecoverable !== true) {
           throw error;
@@ -1210,13 +1267,86 @@ async function requestApply({
     if (state.review === review) {
       state.review = undefined;
     }
+    updatePendingReviewUi();
+    await closeGeneratedDiff(preview);
     previewProvider.remove(preview.originalUri);
     previewProvider.remove(preview.proposedUri);
-    updatePendingReviewUi();
   }
 }
 
-async function applyProposedEdits(document, originalText, originalVersion, application) {
+async function saveAppliedDocument(
+  document,
+  proposedText,
+  wasDirtyBeforeApply,
+  applySaveBehavior
+) {
+  if (!isOpenWorkspaceDocument(document)) {
+    return "documentClosed";
+  }
+  if (applySaveBehavior !== "saveIfCleanBeforeApply") {
+    return document.isDirty === false ? "alreadySaved" : "leftUnsaved";
+  }
+  if (wasDirtyBeforeApply) {
+    return document.isDirty === false
+      ? "alreadySaved"
+      : "skippedPreviouslyDirty";
+  }
+  if (document.getText() !== proposedText) {
+    return document.isDirty === false
+      ? "savedWithChanges"
+      : "changedAfterApply";
+  }
+  if (document.isDirty === false) {
+    return "alreadySaved";
+  }
+  try {
+    const saved = await document.save();
+    if (!isOpenWorkspaceDocument(document)) {
+      return "documentClosed";
+    }
+    if (saved !== true) {
+      if (document.getText() !== proposedText) {
+        return document.isDirty === false
+          ? "savedWithChanges"
+          : "changedAfterApply";
+      }
+      return document.isDirty === false ? "alreadySaved" : "saveFailed";
+    }
+  } catch (_error) {
+    if (document.getText() !== proposedText) {
+      return document.isDirty === false
+        ? "savedWithChanges"
+        : "changedAfterApply";
+    }
+    return document.isDirty === false ? "alreadySaved" : "saveFailed";
+  }
+  if (document.getText() !== proposedText) {
+    return document.isDirty === false
+      ? "savedWithChanges"
+      : "changedAfterApply";
+  }
+  return document.isDirty === false ? "saved" : "saveFailed";
+}
+
+function isOpenWorkspaceDocument(document) {
+  try {
+    return (
+      document &&
+      document.isClosed !== true &&
+      vscode.workspace.textDocuments.includes(document)
+    );
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function applyProposedEdits(
+  document,
+  originalText,
+  originalVersion,
+  application,
+  applySaveBehavior = "leaveUnsaved"
+) {
   assertDocumentSnapshot(document, originalVersion, originalText);
   if (
     !application ||
@@ -1261,46 +1391,79 @@ async function applyProposedEdits(document, originalText, originalVersion, appli
       "apply"
     );
   }
-  let liveEditor;
-  try {
-    liveEditor = await vscode.window.showTextDocument(document, {
-      preserveFocus: false,
-      preview: false
-    });
-  } catch (_error) {
-    throw makeRecoverableApplyError(
-      "The source note editor could not be reopened for the validated edit."
-    );
-  }
-  if (!liveEditor || liveEditor.document !== document) {
-    throw makeRecoverableApplyError(
-      "VS Code returned a different source document for the validated edit."
-    );
-  }
   assertDocumentSnapshot(document, originalVersion, originalText);
+  const wasDirtyBeforeApply = document.isDirty === true;
+  const workspaceEdit = new vscode.WorkspaceEdit();
+  for (const operation of application.edits) {
+    const range = new vscode.Range(
+      document.positionAt(operation.start),
+      document.positionAt(operation.end)
+    );
+    workspaceEdit.replace(document.uri, range, operation.replacement);
+  }
   let applied;
   try {
-    applied = await liveEditor.edit(
-      (editBuilder) => {
-        for (const operation of application.edits) {
-          const range = new vscode.Range(
-            document.positionAt(operation.start),
-            document.positionAt(operation.end)
-          );
-          editBuilder.replace(range, operation.replacement);
-        }
-      },
-      { undoStopBefore: true, undoStopAfter: true }
-    );
+    applied = await vscode.workspace.applyEdit(workspaceEdit);
   } catch (_error) {
+    if (document.getText() !== originalText) {
+      throw makeError(
+        "The note changed while VS Code was applying the reviewed update.",
+        "APPLY_STATE_UNCERTAIN",
+        "apply"
+      );
+    }
     throw makeRecoverableApplyError(
       "VS Code rejected the generated edit."
     );
   }
   if (!applied) {
+    if (document.getText() !== originalText) {
+      throw makeError(
+        "The note changed while VS Code was applying the reviewed update.",
+        "APPLY_STATE_UNCERTAIN",
+        "apply"
+      );
+    }
     throw makeRecoverableApplyError("VS Code rejected the generated edit.");
   }
-  return { applied: true };
+  if (document.getText() !== application.text) {
+    throw makeError(
+      "The note no longer matches the reviewed update after Apply.",
+      "APPLY_STATE_UNCERTAIN",
+      "apply"
+    );
+  }
+  const saveOutcome = await saveAppliedDocument(
+    document,
+    application.text,
+    wasDirtyBeforeApply,
+    applySaveBehavior
+  );
+  return { applied: true, saveOutcome };
+}
+
+function refreshApplySaveOutcome(document, proposedText, saveOutcome) {
+  if (!isOpenWorkspaceDocument(document)) {
+    return "documentClosed";
+  }
+  const matchesReviewedText = document.getText() === proposedText;
+  const isClean = document.isDirty === false;
+  if (!matchesReviewedText) {
+    return isClean ? "savedWithChanges" : "changedAfterApply";
+  }
+  if (isClean) {
+    return saveOutcome === "leftUnsaved" ||
+      saveOutcome === "saveFailed" ||
+      saveOutcome === "savedWithChanges" ||
+      saveOutcome === "skippedPreviouslyDirty"
+      ? "alreadySaved"
+      : saveOutcome;
+  }
+  return saveOutcome === "alreadySaved" ||
+    saveOutcome === "saved" ||
+    saveOutcome === "savedWithChanges"
+    ? "changedAfterApply"
+    : saveOutcome;
 }
 
 async function runGenerationWorkflow(
@@ -1476,7 +1639,7 @@ async function runGenerationWorkflow(
   assertDocumentSnapshot(document, originalVersion, originalText);
   throwIfAborted(controller.signal);
   onPhase("review");
-  const shouldApply = await requestApply({
+  const applyResult = await requestApply({
     application,
     document,
     documentLabel,
@@ -1489,19 +1652,50 @@ async function runGenerationWorkflow(
     warnings: generated.warnings
   });
   throwIfAborted(controller.signal);
-  if (!shouldApply) {
+  if (!applyResult || applyResult.applied !== true) {
     vscode.window.showInformationMessage(t("Generated changes were discarded."));
     return;
   }
 
-  const successMessage =
+  const saveOutcome = refreshApplySaveOutcome(
+    document,
+    application.text,
+    applyResult.saveOutcome
+  );
+
+  const appliedMessage =
     application.updatedCount === 1
-      ? t("Applied 1 generated section to '{0}'. Save the note when ready.", documentLabel)
+      ? t("Applied 1 generated section to '{0}'.", documentLabel)
       : t(
-          "Applied {0} generated sections to '{1}'. Save the note when ready.",
+          "Applied {0} generated sections to '{1}'.",
           application.updatedCount,
           documentLabel
         );
+  const saveMessage = {
+    alreadySaved: t("The note is saved."),
+    changedAfterApply: t(
+      "The note changed after Apply and has unsaved changes. Review it before closing."
+    ),
+    documentClosed: t(
+      "The note was closed after Apply, so whether the reviewed changes were kept could not be verified. Reopen the note and verify its contents."
+    ),
+    leftUnsaved: t("Save the note when ready."),
+    saveFailed: t("Saving failed; the applied changes remain unsaved."),
+    saved: t("The note is saved."),
+    savedWithChanges: t(
+      "Save-time actions changed the note after review. Review the saved note again."
+    ),
+    skippedPreviouslyDirty: t(
+      "The note remains unsaved because it already contained unsaved changes before Apply."
+    )
+  }[saveOutcome] || t("Save the note when ready.");
+  const successMessage = `${appliedMessage} ${saveMessage}`;
+  const warningOutcome =
+    saveOutcome === "changedAfterApply" ||
+    saveOutcome === "documentClosed" ||
+    saveOutcome === "saveFailed" ||
+    saveOutcome === "savedWithChanges" ||
+    saveOutcome === "skippedPreviouslyDirty";
   const reportConfirmationFailure = () => {
     if (diagnosticsChannel) {
       diagnosticsChannel.appendLine(
@@ -1510,9 +1704,10 @@ async function runGenerationWorkflow(
     }
   };
   try {
-    Promise.resolve(vscode.window.showInformationMessage(successMessage)).catch(
-      reportConfirmationFailure
-    );
+    const confirmation = warningOutcome
+      ? vscode.window.showWarningMessage(successMessage)
+      : vscode.window.showInformationMessage(successMessage);
+    Promise.resolve(confirmation).catch(reportConfirmationFailure);
   } catch (_error) {
     reportConfirmationFailure();
   }
@@ -2342,6 +2537,7 @@ module.exports = {
   deactivate,
   deleteFailureLogCommand,
   chooseCliSourceCommand,
+  closeGeneratedDiff,
   discardPendingReviewCommand,
   fillWithCodex,
   listTargetHeadings,

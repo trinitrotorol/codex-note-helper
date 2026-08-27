@@ -67,5 +67,10 @@
   "configuration.confirmBeforeRun.enum.always": "実行のたびに、ファイル、対象数、モード、ポリシー、ネットワーク設定を確認します。",
   "configuration.confirmBeforeRun.enum.appendAlways": "対象ポリシーが `appendAlways` の場合だけ確認します。",
   "configuration.confirmBeforeRun.enum.never": "初回同意後は通常の実行確認を表示しません。Web 検索または Codex ユーザー設定を有効にした場合は毎回確認します。",
-  "configuration.ignoreCodexUserConfiguration.description": "現在の Codex 認証を維持しつつ、予測可能な動作のため `--ignore-user-config` で実行します。拡張は常に一時モードを使い、リポジトリのルールファイルを無視します。この設定を無効にした実行は毎回確認します。"
+  "configuration.ignoreCodexUserConfiguration.description": "現在の Codex 認証を維持しつつ、予測可能な動作のため `--ignore-user-config` で実行します。拡張は常に一時モードを使い、リポジトリのルールファイルを無視します。この設定を無効にした実行は毎回確認します。",
+  "configuration.applySaveBehavior.description": "適用後に拡張機能が Markdown 文書を明示的に保存するかを指定します。`leaveUnsaved` では拡張機能から保存しませんが、VS Code の自動保存によって保存されることがあります。`saveIfCleanBeforeApply` では、適用直前に未保存の変更がなかった文書だけを保存します。",
+  "configuration.applySaveBehavior.label.leaveUnsaved": "未保存のままにする",
+  "configuration.applySaveBehavior.label.saveIfCleanBeforeApply": "適用前が保存済みなら保存",
+  "configuration.applySaveBehavior.enum.leaveUnsaved": "確認済みの編集を適用しますが、拡張機能から文書を明示的に保存しません。VS Code の自動保存によって保存されることがあります。",
+  "configuration.applySaveBehavior.enum.saveIfCleanBeforeApply": "適用直前に未保存の変更がなかった場合に限り、適用後に文書を保存します。"
 }

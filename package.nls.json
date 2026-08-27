@@ -67,5 +67,10 @@
   "configuration.confirmBeforeRun.enum.always": "Confirm the file, target count, mode, policy, and network setting before every run.",
   "configuration.confirmBeforeRun.enum.appendAlways": "Confirm only when the `appendAlways` target policy is active.",
   "configuration.confirmBeforeRun.enum.never": "Do not show routine confirmations after first-run consent. Web search and Codex user configuration still require confirmation on every run.",
-  "configuration.ignoreCodexUserConfiguration.description": "Run with `--ignore-user-config` for predictable behavior while retaining the current Codex authentication. The extension always uses ephemeral mode and ignores repository rule files. Disabling this setting requires confirmation on every run."
+  "configuration.ignoreCodexUserConfiguration.description": "Run with `--ignore-user-config` for predictable behavior while retaining the current Codex authentication. The extension always uses ephemeral mode and ignores repository rule files. Disabling this setting requires confirmation on every run.",
+  "configuration.applySaveBehavior.description": "Controls whether the extension explicitly saves the Markdown document after Apply. `leaveUnsaved` does not explicitly save; VS Code Auto Save may still save the document. `saveIfCleanBeforeApply` saves only when the document was clean immediately before Apply.",
+  "configuration.applySaveBehavior.label.leaveUnsaved": "Leave unsaved",
+  "configuration.applySaveBehavior.label.saveIfCleanBeforeApply": "Save if clean before Apply",
+  "configuration.applySaveBehavior.enum.leaveUnsaved": "Apply the reviewed edits without explicitly saving the document. VS Code Auto Save may still save it.",
+  "configuration.applySaveBehavior.enum.saveIfCleanBeforeApply": "Save after Apply only when the document had no unsaved changes immediately before Apply."
 }

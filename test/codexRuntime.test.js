@@ -1,10 +1,27 @@
+"use strict";
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
   buildCodexArgs,
+  formatSafeFailureReason,
   formatFailureLog,
   truncateForLog
 } = require("../lib/codexRuntime");
+
+test("formatSafeFailureReason exposes only stable allowlisted identifiers", () => {
+  const error = new Error("private C:/secret/note.md");
+  error.code = "EXECUTABLE_NOT_FOUND";
+  error.phase = "preflight";
+  assert.equal(
+    formatSafeFailureReason(error),
+    "extension validation failure (preflight; code: EXECUTABLE_NOT_FOUND)"
+  );
+
+  error.code = "PRIVATE_C:/secret";
+  error.phase = "private phase";
+  assert.equal(formatSafeFailureReason(error), "process error (unclassified)");
+});
 
 test("buildCodexArgs creates an isolated read-only structured exec", () => {
   const args = buildCodexArgs("C:/workspace", {
@@ -97,6 +114,7 @@ test("formatFailureLog excludes model and filesystem secrets at every level", ()
 
   assert.match(log, /Codex exited with code 7/);
   assert.match(log, /target heading count: 1/);
+  assert.match(log, /Codex process started: yes/);
   assert.match(log, /stdout truncated: true/);
   for (const secret of [
     "C:/secret",
@@ -126,12 +144,99 @@ test("formatFailureLog caps the complete entry", () => {
   assert.match(log, /truncated/);
 });
 
-test("formatFailureLog identifies extension validation failures without calling them process errors", () => {
+test("formatFailureLog records only allowlisted extension codes and phases", () => {
+  const error = new Error("private error C:/secret/note.md");
+  error.stack = "private stack C:/secret/note.md";
+  error.code = "EXECUTABLE_NOT_FOUND";
+  error.phase = "preflight";
   const log = formatFailureLog({
     timestamp: "2026-06-01T00:00:00.000Z",
-    error: { code: "MALFORMED_MARKER", phase: "parse" }
+    error,
+    command: "C:/secret/codex.exe",
+    stdout: "private stdout",
+    stderr: "private stderr"
   });
 
-  assert.match(log, /extension validation failure \(parse\)/u);
+  assert.match(
+    log,
+    /extension validation failure \(preflight; code: EXECUTABLE_NOT_FOUND\)/u
+  );
   assert.doesNotMatch(log, /process error/u);
+  assert.match(log, /Codex process started: no/u);
+  assert.doesNotMatch(log, /stdout truncated:/u);
+  assert.doesNotMatch(log, /stderr truncated:/u);
+  for (const secret of [
+    "C:/secret",
+    "note.md",
+    "codex.exe",
+    "private error",
+    "private stack",
+    "private stdout",
+    "private stderr"
+  ]) {
+    assert.equal(log.includes(secret), false);
+  }
+});
+
+test("formatFailureLog never falls back to unknown codes or phases", () => {
+  const error = new Error("private message");
+  error.code = "SECRET_CODE_C:/private/path";
+  error.phase = "private-phase\nC:/private/path";
+  error.stack = "private stack";
+  const log = formatFailureLog({ error });
+
+  assert.match(log, /reason: process error \(unclassified\)/u);
+  assert.match(log, /Codex process started: no/u);
+  for (const secret of [
+    "SECRET_CODE",
+    "private-phase",
+    "C:/private/path",
+    "private message",
+    "private stack"
+  ]) {
+    assert.equal(log.includes(secret), false);
+  }
+});
+
+test("formatFailureLog omits process-only fields when spawning failed", () => {
+  const error = new Error("spawn failed at C:/private/codex.exe");
+  error.name = "ProcessRunError";
+  error.code = "ENOENT";
+  error.codex = {
+    code: null,
+    signal: null,
+    stdout: "private stdout",
+    stderr: "private stderr",
+    stdoutTruncated: true,
+    stderrTruncated: true
+  };
+  const log = formatFailureLog({ error });
+
+  assert.match(log, /reason: process error \(code: ENOENT\)/u);
+  assert.match(log, /Codex process started: no/u);
+  assert.doesNotMatch(log, /stdout truncated:/u);
+  assert.doesNotMatch(log, /stderr truncated:/u);
+  assert.doesNotMatch(log, /private/u);
+});
+
+test("formatFailureLog trusts an explicit not-started marker for unknown spawn errors", () => {
+  const error = new Error("private synchronous spawn failure");
+  error.name = "ProcessRunError";
+  error.code = "EINVAL";
+  error.codex = {
+    code: null,
+    signal: null,
+    started: false,
+    stdout: "private stdout",
+    stderr: "private stderr",
+    stdoutTruncated: true,
+    stderrTruncated: true
+  };
+  const log = formatFailureLog({ error });
+
+  assert.match(log, /reason: process error \(unclassified\)/u);
+  assert.match(log, /Codex process started: no/u);
+  assert.doesNotMatch(log, /stdout truncated:/u);
+  assert.doesNotMatch(log, /stderr truncated:/u);
+  assert.doesNotMatch(log, /EINVAL|private/u);
 });

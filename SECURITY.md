@@ -6,9 +6,10 @@ configured for Codex, not as an offline or local-only model.
 
 ## Supported Versions
 
-Security fixes are provided for the latest released version only. Version 0.3.0
-replaces the direct workspace-editing design used by earlier releases with a
-structured-proposal and validated-application design.
+Security fixes are provided for the latest released version only. Version 0.3.1
+uses the structured-proposal and validated-application design introduced in
+0.3.0, and adds recoverable pending reviews plus allowlisted preflight reason
+codes without weakening the review or logging boundaries.
 
 ## Trust and Workspace Requirements
 
@@ -37,14 +38,15 @@ After mandatory first-run data consent, a generation run can send:
 - configured mode, target policy, research field, output language, and style,
 - and fixed instructions for the structured update proposal.
 
-The workspace path, file path, and full note are not sent to Codex and are not
-used as its working directory. Codex runs in an isolated directory under
-extension-owned global storage, and only selected-section data is placed on
-stdin. The CLI or provider may attach metadata about that isolated runtime
-under its own policy. It may send selected-section data to its configured
-provider, whose retention and privacy policy are outside this extension's
-control. Do not run it on confidential notes until that provider and policy are
-acceptable.
+Workspace and file paths plus unselected note text are not placed in the prompt
+or used as the working directory. Every selected section is placed on stdin; if
+the target policy selects every matching section, their combined content can
+contain most of the note. Codex runs in an isolated directory under
+extension-owned global storage. The CLI or provider may attach metadata about
+that isolated runtime under its own policy. It may send selected-section data to
+its configured provider, whose retention and privacy policy are outside this
+extension's control. Do not run it on confidential notes until that provider and
+policy are acceptable.
 
 Declining data consent starts no generation process and changes no file. The
 Privacy Details action opens the `SECURITY.md` packaged with the installed
@@ -112,6 +114,11 @@ approval again. Every artifact is stat-checked around hashing, then the complete
 identity is resolved again after a consent wait and immediately before
 generation. A changed or transient executable is rejected before the next
 process starts. Diagnostics is subject to the same executable approval gate.
+The CLI-source chooser changes only machine-scoped extension settings. Selecting
+the official OpenAI extension bundle requires a separate modal opt-in, and the
+resolved executable still requires fingerprint approval and compatibility
+probing. Missing-CLI remediation may open the bundled-fallback setting, but it
+never enables that setting automatically.
 
 Each run's temporary schema is kept in that isolated runtime folder, not the
 workspace or shared operating-system temp directory. It contains only the
@@ -168,6 +175,16 @@ mandatory before the apply action is offered. Generated Markdown can still
 contain inaccurate statements or misleading citations; review it as untrusted
 generated content even after structural safety checks.
 
+The Apply and Discard decision is stored only in extension-host memory while a
+review is pending. Hiding, closing, or clearing the notification is not a
+decision. The same proposal can be reopened through the status bar, editor-title
+actions, or Command Palette without another Codex request. Each pending review
+remains bound to the original document object, URI, in-memory version, complete
+text snapshot, and preview URIs. Editing, closing, reopening, cancelling, or
+deactivating invalidates it and removes the extension-owned preview content and
+pending state. Apply performs the snapshot check again immediately before the
+single editor edit.
+
 ## Progress and Cancellation
 
 Progress notifications use throttled, fixed stage names. Raw commands, paths,
@@ -182,6 +199,7 @@ until closed; the extension does not claim complete erasure from VS Code memory.
 ## Network Use
 
 - The extension itself does not call the OpenAI API directly.
+- The extension itself sends no separate analytics or usage telemetry.
 - Codex may contact its configured provider.
 - `codexNoteHelper.enableWebSearch` is disabled by default.
 - Enabling web search permits additional search requests and data disclosure
@@ -192,10 +210,11 @@ until closed; the extension does not claim complete erasure from VS Code memory.
 ## Diagnostic Logs
 
 Diagnostic logs are stored only in extension-owned global storage. They always
-contain bounded timestamps, sanitized status, counts, truncation flags, and
-errors. Prompts, model output, stderr, stack traces, paths, command arguments,
-and heading titles are never written. Version 0.3.0 does not create or append a
-log in the workspace; the removed workspace-log setting is ignored.
+contain bounded timestamps, process-start state, allowlisted phase/reason codes,
+counts, and truncation flags only when a process started. Prompts, model output,
+stdout, stderr, stack traces, paths, command arguments, headings, unknown error
+codes, and raw error messages are never written. Version 0.3.1 does not create
+or append a log in the workspace; the removed workspace-log setting is ignored.
 
 - Log and notification strings are bounded.
 - `Codex Notes: Delete Diagnostic Log` deletes only the extension-owned log.

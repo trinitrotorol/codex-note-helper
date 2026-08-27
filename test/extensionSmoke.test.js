@@ -28,6 +28,7 @@ test("extension entry point activates and registers every command", async () => 
   const vscodeMock = {
     ConfigurationTarget: { Global: 1, WorkspaceFolder: 3 },
     ProgressLocation: { Notification: 15 },
+    StatusBarAlignment: { Right: 2 },
     Uri: {
       from: createUri,
       parse(value) {
@@ -51,6 +52,14 @@ test("extension entry point activates and registers every command", async () => 
     extensions: { getExtension: () => undefined },
     l10n: { t: translate },
     window: {
+      activeTextEditor: undefined,
+      createStatusBarItem() {
+        return {
+          dispose() {},
+          hide() {},
+          show() {}
+        };
+      },
       createOutputChannel() {
         return {
           appendLine() {},
@@ -58,6 +67,9 @@ test("extension entry point activates and registers every command", async () => 
           dispose() {},
           show() {}
         };
+      },
+      onDidChangeActiveTextEditor() {
+        return { dispose() {} };
       }
     },
     workspace: {
@@ -68,13 +80,24 @@ test("extension entry point activates and registers every command", async () => 
       onDidCloseTextDocument() {
         return { dispose() {} };
       },
+      onDidChangeConfiguration() {
+        return { dispose() {} };
+      },
+      getConfiguration() {
+        return {
+          get(_name, fallback) {
+            return fallback;
+          },
+          async update() {}
+        };
+      },
       registerTextDocumentContentProvider() {
         return { dispose() {} };
       }
     }
   };
   const context = {
-    extension: { packageJSON: { version: "0.3.0" } },
+    extension: { packageJSON: { version: "0.3.1" } },
     globalState: { get: () => 0, update: async () => undefined },
     globalStorageUri: createUri({
       scheme: "file",
@@ -98,11 +121,15 @@ test("extension entry point activates and registers every command", async () => 
     const extension = require(extensionPath);
     extension.activate(context);
     assert.deepEqual([...commands.keys()].sort(), [
+      "codexNoteHelper.applyPendingReview",
       "codexNoteHelper.cancelRun",
+      "codexNoteHelper.chooseCliSource",
       "codexNoteHelper.deleteFailureLog",
+      "codexNoteHelper.discardPendingReview",
       "codexNoteHelper.fillWithCodex",
       "codexNoteHelper.listEmptyHeadings",
       "codexNoteHelper.listTargetHeadings",
+      "codexNoteHelper.reopenPendingReview",
       "codexNoteHelper.runDiagnostics",
       "codexNoteHelper.runSelfTest",
       "codexNoteHelper.setFillPolicy",

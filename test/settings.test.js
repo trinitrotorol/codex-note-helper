@@ -14,6 +14,7 @@ test("validateOptions supplies safe defaults", () => {
   assert.equal(options.headingLevel, 1);
   assert.equal(options.timeoutSeconds, 300);
   assert.equal(options.maxTargetHeadings, 25);
+  assert.equal(options.outputLanguage, "English");
   assert.equal(options.ignoreCodexUserConfiguration, true);
   assert.equal(options.showCodexProgress, true);
   assert.equal(options.showDiffAfterRun, undefined);

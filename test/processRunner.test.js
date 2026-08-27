@@ -192,7 +192,7 @@ test("runProcess fails closed when a JSONL event exceeds the line limit", async 
 });
 
 test("runProcess handles asynchronous child spawn errors", async () => {
-  const child = createFakeChild();
+  const child = createFakeChild(null);
   const promise = runProcess({
     command: "missing-codex",
     args: [],
@@ -207,8 +207,28 @@ test("runProcess handles asynchronous child spawn errors", async () => {
   await assert.rejects(promise, (error) => {
     assert.equal(error.code, "ENOENT");
     assert.equal(error.message, "Codex could not be started.");
+    assert.equal(error.codex.started, false);
     return true;
   });
+});
+
+test("runProcess marks synchronous spawn failures as not started", async () => {
+  await assert.rejects(
+    runProcess({
+      command: "invalid-codex",
+      args: [],
+      spawnImpl() {
+        const error = new Error("private spawn failure");
+        error.code = "EINVAL";
+        throw error;
+      }
+    }),
+    (error) => {
+      assert.equal(error.code, "EINVAL");
+      assert.equal(error.codex.started, false);
+      return true;
+    }
+  );
 });
 
 test("runProcess terminates and rejects output beyond the shared byte limit", async () => {

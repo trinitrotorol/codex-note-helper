@@ -24,10 +24,15 @@ const {
   assertCodexEventPolicy,
   createProgressEventFilter
 } = require("./lib/codexProgress");
-const { buildCodexArgs, formatFailureLog } = require("./lib/codexRuntime");
+const {
+  buildCodexArgs,
+  formatFailureLog,
+  formatSafeFailureReason
+} = require("./lib/codexRuntime");
 const { runProcess } = require("./lib/processRunner");
 const {
   isSupportedDocumentScheme,
+  normalizeCodexCommand,
   shouldConfirmRun,
   validateOptions
 } = require("./lib/settings");
@@ -42,8 +47,10 @@ const MAX_CONCURRENT_RUNS = 3;
 let extensionContext;
 let diagnosticsChannel;
 let previewProvider;
+let reviewStatusBarItem;
 const activeRuns = new Map();
 let activeDiagnostics;
+let activeCliSourceSelection;
 const cliProbeCache = new Map();
 
 function t(message, ...args) {
@@ -96,6 +103,12 @@ function makeError(message, code, phase) {
   const error = new Error(message);
   error.code = code;
   error.phase = phase;
+  return error;
+}
+
+function makeRecoverableApplyError(message) {
+  const error = makeError(message, "APPLY_REJECTED", "apply");
+  error.reviewRecoverable = true;
   return error;
 }
 
@@ -313,6 +326,72 @@ class PreviewContentProvider {
   }
 }
 
+function reportReviewUiFailure(message) {
+  if (diagnosticsChannel) {
+    diagnosticsChannel.appendLine(message);
+  }
+}
+
+function setContextSafely(name, value) {
+  try {
+    Promise.resolve(
+      vscode.commands.executeCommand("setContext", name, value)
+    ).catch(() => {
+      reportReviewUiFailure(t("The pending review UI could not be updated."));
+    });
+  } catch (_error) {
+    reportReviewUiFailure(t("The pending review UI could not be updated."));
+  }
+}
+
+function getPendingReviewStates() {
+  return [...activeRuns.values()].filter(
+    (state) => state.review && state.review.settled !== true
+  );
+}
+
+function reviewMatchesResource(state, resource) {
+  if (!state || !state.review || !resource) {
+    return false;
+  }
+  const key = resource.toString();
+  const { review } = state;
+  return (
+    review.document.uri.toString() === key ||
+    review.preview.originalUri.toString() === key ||
+    review.preview.proposedUri.toString() === key
+  );
+}
+
+function updatePendingReviewUi() {
+  const reviews = getPendingReviewStates();
+  const activeResource =
+    vscode.window.activeTextEditor && vscode.window.activeTextEditor.document
+      ? vscode.window.activeTextEditor.document.uri
+      : undefined;
+  setContextSafely("codexNoteHelper.hasPendingReview", reviews.length > 0);
+  setContextSafely(
+    "codexNoteHelper.activeEditorHasPendingReview",
+    reviews.some((state) => reviewMatchesResource(state, activeResource))
+  );
+
+  if (!reviewStatusBarItem) {
+    return;
+  }
+  if (reviews.length === 0) {
+    reviewStatusBarItem.hide();
+    return;
+  }
+  reviewStatusBarItem.text =
+    reviews.length === 1
+      ? t("$(diff) Review Codex update")
+      : t("$(diff) Review {0} Codex updates", reviews.length);
+  reviewStatusBarItem.tooltip = t(
+    "A generated update is waiting for an explicit Apply or Discard decision."
+  );
+  reviewStatusBarItem.show();
+}
+
 function getConfiguration(document) {
   const resource = document && document.uri;
   const config = vscode.workspace.getConfiguration("codexNoteHelper", resource);
@@ -320,7 +399,7 @@ function getConfiguration(document) {
     mode: config.get("mode", "research"),
     fillPolicy: config.get("fillPolicy", "emptyOnly"),
     researchField: config.get("researchField", ""),
-    outputLanguage: config.get("outputLanguage", "Japanese"),
+    outputLanguage: config.get("outputLanguage", "English"),
     noteStyle: config.get("noteStyle", ""),
     headingLevel: config.get("headingLevel", 1),
     codexCommand: config.get("codexCommand", "codex"),
@@ -340,6 +419,62 @@ function getConfiguration(document) {
       true
     )
   });
+}
+
+function readCliConfiguration(document) {
+  const config = vscode.workspace.getConfiguration(
+    "codexNoteHelper",
+    document && document.uri
+  );
+  const inspectedCommand =
+    typeof config.inspect === "function"
+      ? config.inspect("codexCommand")
+      : undefined;
+  const codexCommandExplicitlyConfigured = Boolean(
+    inspectedCommand &&
+      [
+        "globalValue",
+        "workspaceValue",
+        "workspaceFolderValue",
+        "globalLanguageValue",
+        "workspaceLanguageValue",
+        "workspaceFolderLanguageValue"
+      ].some((key) => inspectedCommand[key] !== undefined)
+  );
+  return {
+    codexCommand: normalizeCodexCommand(config.get("codexCommand", "codex")),
+    codexCommandExplicitlyConfigured,
+    allowBundledCodexFromOpenAIExtension:
+      config.get("allowBundledCodexFromOpenAIExtension", false) === true,
+    ignoreCodexUserConfiguration:
+      config.get("ignoreCodexUserConfiguration", true) !== false
+  };
+}
+
+function sameCliConfiguration(left, right) {
+  return Boolean(
+    left &&
+      right &&
+      left.codexCommand === right.codexCommand &&
+      left.allowBundledCodexFromOpenAIExtension ===
+        right.allowBundledCodexFromOpenAIExtension &&
+      left.ignoreCodexUserConfiguration === right.ignoreCodexUserConfiguration
+  );
+}
+
+function updateCliSourceConfiguredContext(document) {
+  let configured = false;
+  try {
+    const cliConfiguration = readCliConfiguration(document);
+    configured =
+      cliConfiguration.codexCommand !== "codex" ||
+      cliConfiguration.codexCommandExplicitlyConfigured ||
+      cliConfiguration.allowBundledCodexFromOpenAIExtension;
+  } catch (_error) {
+    configured = false;
+  }
+  setContextSafely("codexNoteHelper.cliSourceConfigured", configured);
+  return configured;
 }
 
 function getConfigurationTarget(resource) {
@@ -432,6 +567,170 @@ function getBundledCodexCandidate() {
     directoryName,
     executableName
   );
+}
+
+function hasBundledCodexCandidate() {
+  const candidate = getBundledCodexCandidate();
+  if (!candidate) {
+    return false;
+  }
+  try {
+    const stat = fs.lstatSync(candidate);
+    return stat.isFile() && !stat.isSymbolicLink();
+  } catch (_error) {
+    return false;
+  }
+}
+
+function isMissingExecutableError(error) {
+  return Boolean(
+    error &&
+      (error.code === "ENOENT" ||
+        error.code === "EXECUTABLE_NOT_FOUND" ||
+        error.code === "NODE_EXECUTABLE_NOT_FOUND")
+  );
+}
+
+function canOfferBundledCliSetting(error, document) {
+  if (!isMissingExecutableError(error) || !hasBundledCodexCandidate()) {
+    return false;
+  }
+  try {
+    const config = vscode.workspace.getConfiguration(
+      "codexNoteHelper",
+      document && document.uri
+    );
+    return (
+      config.get("codexCommand", "codex") === "codex" &&
+      config.get("allowBundledCodexFromOpenAIExtension", false) !== true
+    );
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function openBundledCliSetting() {
+  await vscode.commands.executeCommand(
+    "workbench.action.openSettings",
+    "codexNoteHelper.allowBundledCodexFromOpenAIExtension"
+  );
+}
+
+async function performCliSourceSelection() {
+  const choices = [
+    {
+      label: t("codex on PATH (Recommended)"),
+      description: t("Use the standard Codex CLI command"),
+      value: "path"
+    }
+  ];
+  if (hasBundledCodexCandidate()) {
+    choices.push({
+      label: t("Official OpenAI extension bundle"),
+      description: t("Use only after explicit opt-in"),
+      value: "bundled"
+    });
+  }
+  choices.push({
+    label: t("Absolute path in Settings"),
+    description: t("Configure another trusted Codex executable"),
+    value: "settings"
+  });
+
+  const picked = await vscode.window.showQuickPick(choices, {
+    placeHolder: t("Choose the Codex CLI source for this extension host")
+  });
+  if (!picked) {
+    return;
+  }
+  if (picked.value === "settings") {
+    await vscode.commands.executeCommand(
+      "workbench.action.openSettings",
+      "codexNoteHelper.codexCommand"
+    );
+    return;
+  }
+
+  const config = vscode.workspace.getConfiguration("codexNoteHelper");
+  if (picked.value === "bundled") {
+    const allowLabel = t("Use bundled CLI");
+    const choice = await vscode.window.showWarningMessage(
+      t(
+        "Allow fallback to the Codex CLI bundled with the official OpenAI extension when codex is absent from PATH? The executable will still require fingerprint approval and a compatibility check."
+      ),
+      { modal: true },
+      allowLabel
+    );
+    if (choice !== allowLabel) {
+      return;
+    }
+    await config.update(
+      "codexCommand",
+      "codex",
+      vscode.ConfigurationTarget.Global
+    );
+    await config.update(
+      "allowBundledCodexFromOpenAIExtension",
+      true,
+      vscode.ConfigurationTarget.Global
+    );
+    const selected = readCliConfiguration();
+    if (
+      selected.codexCommand !== "codex" ||
+      selected.allowBundledCodexFromOpenAIExtension !== true
+    ) {
+      setContextSafely("codexNoteHelper.cliSourceConfigured", false);
+      vscode.window.showErrorMessage(
+        t("A Codex Note Helper setting is invalid. Review the extension settings.")
+      );
+      return;
+    }
+    setContextSafely("codexNoteHelper.cliSourceConfigured", true);
+    vscode.window.showInformationMessage(
+      t("The official OpenAI extension bundle is selected. Run diagnostics next.")
+    );
+    return;
+  }
+
+  await config.update(
+    "allowBundledCodexFromOpenAIExtension",
+    false,
+    vscode.ConfigurationTarget.Global
+  );
+  await config.update(
+    "codexCommand",
+    "codex",
+    vscode.ConfigurationTarget.Global
+  );
+  const selected = readCliConfiguration();
+  if (
+    selected.codexCommand !== "codex" ||
+    selected.allowBundledCodexFromOpenAIExtension !== false
+  ) {
+    setContextSafely("codexNoteHelper.cliSourceConfigured", false);
+    vscode.window.showErrorMessage(
+      t("A Codex Note Helper setting is invalid. Review the extension settings.")
+    );
+    return;
+  }
+  setContextSafely("codexNoteHelper.cliSourceConfigured", true);
+  vscode.window.showInformationMessage(
+    t("The Codex CLI on PATH is selected. Run diagnostics next.")
+  );
+}
+
+function chooseCliSourceCommand() {
+  if (activeCliSourceSelection) {
+    return activeCliSourceSelection;
+  }
+  const selection = performCliSourceSelection();
+  activeCliSourceSelection = selection.finally(() => {
+    if (activeCliSourceSelection === trackedSelection) {
+      activeCliSourceSelection = undefined;
+    }
+  });
+  const trackedSelection = activeCliSourceSelection;
+  return trackedSelection;
 }
 
 function getWorkspaceExecutableRoots() {
@@ -757,32 +1056,43 @@ async function executeWithProgress(title, options, controller, operation) {
   );
 }
 
+async function showGeneratedDiff(preview, documentLabel) {
+  await vscode.commands.executeCommand(
+    "vscode.diff",
+    preview.originalUri,
+    preview.proposedUri,
+    t("Codex Note Helper: Review generated changes for {0}", documentLabel),
+    { preview: true, viewColumn: vscode.ViewColumn.Beside }
+  );
+}
+
 async function openGeneratedDiff(originalText, proposedText, documentLabel) {
-  const originalUri = previewProvider.add("before", originalText);
-  const proposedUri = previewProvider.add("after", proposedText);
+  const preview = {
+    originalUri: previewProvider.add("before", originalText),
+    proposedUri: previewProvider.add("after", proposedText)
+  };
   try {
-    await vscode.commands.executeCommand(
-      "vscode.diff",
-      originalUri,
-      proposedUri,
-      t("Codex Note Helper: Review generated changes for {0}", documentLabel),
-      { preview: true, viewColumn: vscode.ViewColumn.Beside }
-    );
-    return { originalUri, proposedUri };
+    await showGeneratedDiff(preview, documentLabel);
+    return preview;
   } catch (error) {
-    previewProvider.remove(originalUri);
-    previewProvider.remove(proposedUri);
+    previewProvider.remove(preview.originalUri);
+    previewProvider.remove(preview.proposedUri);
     throw error;
   }
 }
 
-async function requestApply(
-  originalText,
-  proposedText,
-  warnings,
+async function requestApply({
+  application,
+  document,
   documentLabel,
-  signal
-) {
+  onPhase,
+  originalText,
+  originalVersion,
+  proposedText,
+  signal,
+  state,
+  warnings
+}) {
   let preview;
   try {
     preview = await openGeneratedDiff(originalText, proposedText, documentLabel);
@@ -793,26 +1103,116 @@ async function requestApply(
       "review"
     );
   }
+
+  const review = {
+    decision: undefined,
+    document,
+    originalText,
+    originalVersion,
+    preview,
+    resolveDecision: undefined,
+    settled: false,
+    arm() {
+      review.settled = false;
+      review.decision = new Promise((resolve) => {
+        review.resolveDecision = resolve;
+      });
+      updatePendingReviewUi();
+    },
+    settle(value) {
+      if (review.settled || state.review !== review) {
+        return false;
+      }
+      review.settled = true;
+      review.resolveDecision(value);
+      updatePendingReviewUi();
+      return true;
+    }
+  };
+  state.review = review;
+  review.arm();
+  setContextSafely("codexNoteHelper.reviewReady", true);
+
   const applyLabel = t("Apply changes");
+  const discardLabel = t("Discard");
   const warningText = warnings.length
     ? `\n\n${t("Codex warnings:")}\n${warnings
         .map((warning) => `- ${warning}`)
         .join("\n")}`
     : "";
-  try {
-    const choice = await raceWithAbort(
-      vscode.window.showInformationMessage(
-        t("Review the generated update for '{0}' before applying it.", documentLabel) +
-          warningText,
-        applyLabel,
-        t("Discard")
-      ),
-      signal
+  const reportNotificationFailure = () => {
+    reportReviewUiFailure(
+      t(
+        "The review notification could not be shown. Use the pending review commands."
+      )
     );
-    return choice === applyLabel;
+  };
+  try {
+    try {
+      Promise.resolve(
+        vscode.window.showInformationMessage(
+          t("Review the generated update for '{0}' before applying it.", documentLabel) +
+            warningText,
+          applyLabel,
+          discardLabel
+        )
+      )
+        .then((choice) => {
+          if (choice === applyLabel) {
+            review.settle(true);
+          } else if (choice === discardLabel) {
+            review.settle(false);
+          }
+          // Closing or clearing the notification is not an explicit decision.
+        })
+        .catch(reportNotificationFailure);
+    } catch (_error) {
+      reportNotificationFailure();
+    }
+    while (true) {
+      const shouldApply = await raceWithAbort(review.decision, signal);
+      throwIfAborted(signal);
+      if (!shouldApply) {
+        return false;
+      }
+      onPhase("applying");
+      try {
+        await applyProposedEdits(
+          document,
+          originalText,
+          originalVersion,
+          application
+        );
+        return true;
+      } catch (error) {
+        if (!error || error.reviewRecoverable !== true) {
+          throw error;
+        }
+        assertDocumentSnapshot(document, originalVersion, originalText);
+        throwIfAborted(signal);
+        onPhase("review");
+        review.arm();
+        try {
+          Promise.resolve(
+            vscode.window.showErrorMessage(
+              t(
+                "VS Code could not apply the generated update. It remains pending for review."
+              )
+            )
+          ).catch(reportNotificationFailure);
+        } catch (_notificationError) {
+          reportNotificationFailure();
+        }
+      }
+    }
   } finally {
+    review.settled = true;
+    if (state.review === review) {
+      state.review = undefined;
+    }
     previewProvider.remove(preview.originalUri);
     previewProvider.remove(preview.proposedUri);
+    updatePendingReviewUi();
   }
 }
 
@@ -868,38 +1268,37 @@ async function applyProposedEdits(document, originalText, originalVersion, appli
       preview: false
     });
   } catch (_error) {
-    throw makeError(
-      "The source note editor could not be reopened for the validated edit.",
-      "APPLY_REJECTED",
-      "apply"
+    throw makeRecoverableApplyError(
+      "The source note editor could not be reopened for the validated edit."
     );
   }
   if (!liveEditor || liveEditor.document !== document) {
-    throw makeError(
-      "VS Code returned a different source document for the validated edit.",
-      "APPLY_REJECTED",
-      "apply"
+    throw makeRecoverableApplyError(
+      "VS Code returned a different source document for the validated edit."
     );
   }
   assertDocumentSnapshot(document, originalVersion, originalText);
-  const applied = await liveEditor.edit(
-    (editBuilder) => {
-      for (const operation of application.edits) {
-        const range = new vscode.Range(
-          document.positionAt(operation.start),
-          document.positionAt(operation.end)
-        );
-        editBuilder.replace(range, operation.replacement);
-      }
-    },
-    { undoStopBefore: true, undoStopAfter: true }
-  );
-  if (!applied) {
-    throw makeError(
-      "VS Code rejected the generated edit.",
-      "APPLY_REJECTED",
-      "apply"
+  let applied;
+  try {
+    applied = await liveEditor.edit(
+      (editBuilder) => {
+        for (const operation of application.edits) {
+          const range = new vscode.Range(
+            document.positionAt(operation.start),
+            document.positionAt(operation.end)
+          );
+          editBuilder.replace(range, operation.replacement);
+        }
+      },
+      { undoStopBefore: true, undoStopAfter: true }
     );
+  } catch (_error) {
+    throw makeRecoverableApplyError(
+      "VS Code rejected the generated edit."
+    );
+  }
+  if (!applied) {
+    throw makeRecoverableApplyError("VS Code rejected the generated edit.");
   }
   return { applied: true };
 }
@@ -909,7 +1308,8 @@ async function runGenerationWorkflow(
   controller,
   documentLabel,
   onTargetCount,
-  onPhase
+  onPhase,
+  state
 ) {
   const { document } = editor;
   let options;
@@ -1076,26 +1476,24 @@ async function runGenerationWorkflow(
   assertDocumentSnapshot(document, originalVersion, originalText);
   throwIfAborted(controller.signal);
   onPhase("review");
-  const shouldApply = await requestApply(
-    originalText,
-    application.text,
-    generated.warnings,
+  const shouldApply = await requestApply({
+    application,
+    document,
     documentLabel,
-    controller.signal
-  );
+    onPhase,
+    originalText,
+    originalVersion,
+    proposedText: application.text,
+    signal: controller.signal,
+    state,
+    warnings: generated.warnings
+  });
   throwIfAborted(controller.signal);
   if (!shouldApply) {
     vscode.window.showInformationMessage(t("Generated changes were discarded."));
     return;
   }
 
-  onPhase("applying");
-  await applyProposedEdits(
-    document,
-    originalText,
-    originalVersion,
-    application
-  );
   const successMessage =
     application.updatedCount === 1
       ? t("Applied 1 generated section to '{0}'. Save the note when ready.", documentLabel)
@@ -1201,7 +1599,7 @@ async function openFailureLog() {
   await vscode.window.showTextDocument(document, { preview: false });
 }
 
-async function handleRunError(error, targetCount = 0) {
+async function handleRunError(error, targetCount = 0, document) {
   if (
     error &&
     (error.cancelled || error.name === "AbortError" || error.code === "ABORT_ERR")
@@ -1225,6 +1623,11 @@ async function handleRunError(error, targetCount = 0) {
     actions.push(t("Open failure log"));
   }
   if (!error || error.phase !== "parse") {
+    if (canOfferBundledCliSetting(error, document)) {
+      actions.push(t("Open bundled CLI setting"));
+    } else if (isMissingExecutableError(error)) {
+      actions.push(t("Choose CLI source"));
+    }
     actions.push(t("Run diagnostics"), t("Open settings"));
   }
   const choice = await vscode.window.showErrorMessage(
@@ -1233,6 +1636,10 @@ async function handleRunError(error, targetCount = 0) {
   );
   if (choice === t("Open failure log")) {
     await openFailureLog();
+  } else if (choice === t("Open bundled CLI setting")) {
+    await openBundledCliSetting();
+  } else if (choice === t("Choose CLI source")) {
+    await vscode.commands.executeCommand("codexNoteHelper.chooseCliSource");
   } else if (choice === t("Run diagnostics")) {
     await vscode.commands.executeCommand("codexNoteHelper.runDiagnostics");
   } else if (choice === t("Open settings")) {
@@ -1249,7 +1656,12 @@ async function fillWithCodex() {
     return;
   }
   const key = editor.document.uri.toString();
-  if (activeRuns.has(key)) {
+  const existingRun = activeRuns.get(key);
+  if (existingRun && existingRun.review && !existingRun.review.settled) {
+    await reopenPendingReviewCommand(editor.document.uri);
+    return;
+  }
+  if (existingRun) {
     vscode.window.showWarningMessage(
       t("Codex Note Helper is already running for this note.")
     );
@@ -1289,11 +1701,14 @@ async function fillWithCodex() {
     },
     (phase) => {
       state.phase = phase;
-    }
+    },
+    state
   ).catch((error) => {
     // Terminal UI must not retain the document lock or block deactivation while
     // the user leaves a notification open.
-    Promise.resolve(handleRunError(error, state.targetCount)).catch(() => {
+    Promise.resolve(
+      handleRunError(error, state.targetCount, editor.document)
+    ).catch(() => {
       if (diagnosticsChannel) {
         diagnosticsChannel.appendLine(
           t("The failure notification action could not be completed.")
@@ -1309,6 +1724,123 @@ async function fillWithCodex() {
     if (activeRuns.get(key) === state) {
       activeRuns.delete(key);
     }
+  }
+}
+
+async function selectPendingReview(resource, placeHolder, allowSingleFallback) {
+  const reviews = getPendingReviewStates();
+  if (reviews.length === 0) {
+    vscode.window.showInformationMessage(
+      t("No generated update is waiting for review.")
+    );
+    return undefined;
+  }
+
+  if (resource) {
+    const match = reviews.find((state) => reviewMatchesResource(state, resource));
+    if (match) {
+      return match;
+    }
+    vscode.window.showInformationMessage(
+      t("No generated update is waiting for review.")
+    );
+    return undefined;
+  }
+  const activeResource =
+    vscode.window.activeTextEditor && vscode.window.activeTextEditor.document
+      ? vscode.window.activeTextEditor.document.uri
+      : undefined;
+  if (activeResource) {
+    const match = reviews.find((state) =>
+      reviewMatchesResource(state, activeResource)
+    );
+    if (match) {
+      return match;
+    }
+  }
+  if (reviews.length === 1 && allowSingleFallback) {
+    return reviews[0];
+  }
+
+  const picked = await vscode.window.showQuickPick(
+    reviews.map((state) => ({
+      label: state.label,
+      detail: state.detail,
+      state
+    })),
+    { placeHolder }
+  );
+  return picked && picked.state;
+}
+
+function abortStaleReview(state, review) {
+  if (!review || review.settled || state.review !== review) {
+    return true;
+  }
+  try {
+    assertDocumentSnapshot(
+      review.document,
+      review.originalVersion,
+      review.originalText
+    );
+    return false;
+  } catch (error) {
+    if (!state.controller.signal.aborted) {
+      state.controller.abort(error);
+    }
+    return true;
+  }
+}
+
+async function reopenPendingReviewCommand(resource) {
+  const state = await selectPendingReview(
+    resource,
+    t("Select a generated update to review"),
+    true
+  );
+  if (!state) {
+    return;
+  }
+  const review = state.review;
+  if (abortStaleReview(state, review)) {
+    return;
+  }
+  try {
+    await showGeneratedDiff(review.preview, state.label);
+  } catch (_error) {
+    vscode.window.showErrorMessage(
+      t(
+        "The pending review diff could not be reopened. The update remains pending."
+      )
+    );
+  }
+}
+
+async function applyPendingReviewCommand(resource) {
+  const state = await selectPendingReview(
+    resource,
+    t("Select a generated update to apply"),
+    false
+  );
+  if (!state) {
+    return;
+  }
+  const review = state.review;
+  if (abortStaleReview(state, review)) {
+    return;
+  }
+  review.settle(true);
+}
+
+async function discardPendingReviewCommand(resource) {
+  const state = await selectPendingReview(
+    resource,
+    t("Select a generated update to discard"),
+    false
+  );
+  const review = state && state.review;
+  if (review && !review.settled && state.review === review) {
+    review.settle(false);
   }
 }
 
@@ -1492,6 +2024,7 @@ async function performDiagnostics(signal) {
   if (!diagnosticsChannel) {
     return;
   }
+  setContextSafely("codexNoteHelper.initialDiagnosticsPassed", false);
   diagnosticsChannel.clear();
   diagnosticsChannel.appendLine(t("Codex Note Helper diagnostics"));
   diagnosticsChannel.appendLine(
@@ -1506,6 +2039,12 @@ async function performDiagnostics(signal) {
   try {
     const editor = vscode.window.activeTextEditor;
     const options = getConfiguration(editor && editor.document);
+    const cliConfigurationSnapshot = {
+      codexCommand: options.codexCommand,
+      allowBundledCodexFromOpenAIExtension:
+        options.allowBundledCodexFromOpenAIExtension,
+      ignoreCodexUserConfiguration: options.ignoreCodexUserConfiguration
+    };
     const deadline = createOperationDeadline(
       options.timeoutSeconds * 1000,
       signal
@@ -1566,7 +2105,21 @@ async function performDiagnostics(signal) {
     diagnosticsChannel.appendLine(
       t("Failure log present: {0}", yesNoLabel(info.exists))
     );
+    let currentCliConfiguration;
+    try {
+      currentCliConfiguration = readCliConfiguration(editor && editor.document);
+    } catch (_error) {
+      currentCliConfiguration = undefined;
+    }
+    if (!sameCliConfiguration(cliConfigurationSnapshot, currentCliConfiguration)) {
+      throw makeError(
+        "The Codex CLI settings changed while diagnostics were running.",
+        "EXECUTABLE_CHANGED",
+        "preflight"
+      );
+    }
     diagnosticsChannel.appendLine(t("Diagnostics result: PASS"));
+    setContextSafely("codexNoteHelper.initialDiagnosticsPassed", true);
     vscode.window.showInformationMessage(t("Codex Note Helper diagnostics passed."));
   } catch (error) {
     if (
@@ -1578,8 +2131,36 @@ async function performDiagnostics(signal) {
       return;
     }
     diagnosticsChannel.appendLine(t("Diagnostics result: FAIL"));
+    diagnosticsChannel.appendLine(
+      t("Safe failure reason: {0}", formatSafeFailureReason(error))
+    );
     diagnosticsChannel.appendLine(friendlyErrorMessage(error));
-    vscode.window.showErrorMessage(t("Codex Note Helper diagnostics failed."));
+    const actions = isMissingExecutableError(error)
+      ? [
+          ...(canOfferBundledCliSetting(
+            error,
+            vscode.window.activeTextEditor &&
+              vscode.window.activeTextEditor.document
+          )
+            ? [t("Open bundled CLI setting")]
+            : [t("Choose CLI source")]),
+          t("Open settings")
+        ]
+      : [t("Open settings")];
+    const choice = await vscode.window.showErrorMessage(
+      t("Codex Note Helper diagnostics failed."),
+      ...actions
+    );
+    if (choice === t("Open bundled CLI setting")) {
+      await openBundledCliSetting();
+    } else if (choice === t("Choose CLI source")) {
+      await vscode.commands.executeCommand("codexNoteHelper.chooseCliSource");
+    } else if (choice === t("Open settings")) {
+      await vscode.commands.executeCommand(
+        "workbench.action.openSettings",
+        "@ext:trinitrotorol.codex-note-helper"
+      );
+    }
   }
   diagnosticsChannel.show(true);
 }
@@ -1633,9 +2214,16 @@ function activate(context) {
   diagnosticsChannel = vscode.window.createOutputChannel(
     t("Codex Note Helper Diagnostics")
   );
+  reviewStatusBarItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right,
+    100
+  );
+  reviewStatusBarItem.name = t("Codex Note Helper pending review");
+  reviewStatusBarItem.command = "codexNoteHelper.reopenPendingReview";
   context.subscriptions.push(
     diagnosticsChannel,
     previewProvider,
+    reviewStatusBarItem,
     vscode.workspace.registerTextDocumentContentProvider(
       PREVIEW_SCHEME,
       previewProvider
@@ -1647,10 +2235,47 @@ function activate(context) {
     }),
     vscode.workspace.onDidCloseTextDocument((document) => {
       abortRunForDocument(document);
+    }),
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (
+        !event ||
+        typeof event.affectsConfiguration !== "function" ||
+        (!event.affectsConfiguration("codexNoteHelper.codexCommand") &&
+          !event.affectsConfiguration(
+            "codexNoteHelper.allowBundledCodexFromOpenAIExtension"
+          ) &&
+          !event.affectsConfiguration(
+            "codexNoteHelper.ignoreCodexUserConfiguration"
+          ))
+      ) {
+        return;
+      }
+      updateCliSourceConfiguredContext(
+        vscode.window.activeTextEditor && vscode.window.activeTextEditor.document
+      );
+      setContextSafely("codexNoteHelper.initialDiagnosticsPassed", false);
+    }),
+    vscode.window.onDidChangeActiveTextEditor(() => {
+      updatePendingReviewUi();
     })
   );
   registerCommand(context, "codexNoteHelper.fillWithCodex", fillWithCodex);
   registerCommand(context, "codexNoteHelper.cancelRun", cancelRunCommand);
+  registerCommand(
+    context,
+    "codexNoteHelper.reopenPendingReview",
+    reopenPendingReviewCommand
+  );
+  registerCommand(
+    context,
+    "codexNoteHelper.applyPendingReview",
+    applyPendingReviewCommand
+  );
+  registerCommand(
+    context,
+    "codexNoteHelper.discardPendingReview",
+    discardPendingReviewCommand
+  );
   registerCommand(context, "codexNoteHelper.listTargetHeadings", listTargetHeadings);
   registerCommand(
     context,
@@ -1668,6 +2293,11 @@ function activate(context) {
     "codexNoteHelper.runDiagnostics",
     runDiagnosticsCommand
   );
+  registerCommand(
+    context,
+    "codexNoteHelper.chooseCliSource",
+    chooseCliSourceCommand
+  );
   // Hidden compatibility aliases from versions before 0.3.0.
   registerCommand(
     context,
@@ -1679,6 +2309,8 @@ function activate(context) {
     "codexNoteHelper.runSelfTest",
     runDiagnosticsCommand
   );
+  updateCliSourceConfiguredContext();
+  updatePendingReviewUi();
 }
 
 async function deactivate() {
@@ -1698,18 +2330,24 @@ async function deactivate() {
   activeRuns.clear();
   activeDiagnostics = undefined;
   cliProbeCache.clear();
+  updatePendingReviewUi();
   extensionContext = undefined;
   diagnosticsChannel = undefined;
   previewProvider = undefined;
+  reviewStatusBarItem = undefined;
 }
 
 module.exports = {
   activate,
   deactivate,
   deleteFailureLogCommand,
+  chooseCliSourceCommand,
+  discardPendingReviewCommand,
   fillWithCodex,
   listTargetHeadings,
   applyProposedEdits,
+  applyPendingReviewCommand,
+  reopenPendingReviewCommand,
   runDiagnosticsCommand,
   setFillPolicyCommand,
   setModeCommand

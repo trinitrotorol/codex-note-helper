@@ -8,6 +8,7 @@ dist/**
 .vsix-build*/
 .vscode-test/**
 node_modules/**
+media/social-preview.png
 coverage/**
 package-lock.json
 .gitignore

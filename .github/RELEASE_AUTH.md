@@ -14,16 +14,18 @@ Configure GitHub as follows:
 1. Use the publisher owner's existing Azure DevOps organization. Do not create
    a new organization, Azure subscription, or paid resource for release
    authentication.
-2. For each release, create a new Global PAT with **Organization** set to
-   **All accessible organizations** and only the Marketplace **Manage** scope.
-   Its lifetime must be no more than 48 hours and its expiry must never be
-   later than November 30, 2026.
+2. For a planned release window, create one Global PAT with **Organization**
+   set to **All accessible organizations** and only the Marketplace **Manage**
+   scope. Its lifetime must be no more than seven days and its expiry must
+   never be later than November 30, 2026. Do not keep overlapping release PATs.
 3. Add that PAT as the `VSCE_PAT` **repository secret**, not an organization
-   secret, immediately before the release. Record its expiry outside the
-   repository.
-4. After the Marketplace payload and GitHub release are verified, immediately
-   revoke the PAT in Azure DevOps and delete the `VSCE_PAT` repository secret.
-   Create a fresh short-lived PAT only when the next release needs one.
+   secret, immediately before the first release in the window. Record its
+   expiry outside the repository.
+4. The PAT may be reused only for planned patch or minor releases during that
+   same short window. After the last planned release, or when the window
+   expires, immediately revoke the PAT in Azure DevOps and delete the
+   `VSCE_PAT` repository secret. Never extend or regenerate a window PAT;
+   create a new short-lived PAT for a later window.
 5. Require CODEOWNERS review for workflow, lockfile, and release-authentication
    changes through the default-branch ruleset.
 
@@ -39,7 +41,9 @@ comparison receive no secret. The PAT must never be printed, copied to an
 output, placed in an artifact, or used as a fallback after another
 authentication method fails. If the secret is absent or expired, publication
 must fail closed and leave the GitHub release as a draft. Revoke and delete the
-PAT after a failed attempt as well; never retain it for a later release.
+PAT immediately after an authentication or publication failure, or whenever
+exposure is suspected. A build or test failure before the publication step
+does not expose the PAT, but retry only after reviewing the failure.
 
 The workflow-level token has `contents: read`. Only the release job receives
 `contents: write`, which it needs to prepare and publish the GitHub release.
